@@ -57,7 +57,8 @@ public class DatabaseManager {
             // 硬盘表
             "CREATE TABLE IF NOT EXISTS disks (" +
             "  id INTEGER PRIMARY KEY AUTOINCREMENT," +
-            "  device_path TEXT NOT NULL UNIQUE," +
+            "  client_id TEXT," +
+            "  device_path TEXT NOT NULL," +
             "  brand TEXT," +
             "  model TEXT," +
             "  serial_number TEXT," +
@@ -66,7 +67,8 @@ public class DatabaseManager {
             "  monitored INTEGER NOT NULL DEFAULT 0," +
             "  monitor_cron TEXT," +
             "  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
-            "  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" +
+            "  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+            "  UNIQUE(client_id, device_path)" +
             ")",
 
             // 容量监控记录表

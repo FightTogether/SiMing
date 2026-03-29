@@ -68,6 +68,11 @@ public class Disk {
     private LocalDateTime updateTime;
 
     /**
+     * 客户端ID，分布式部署时标识不同采集客户端
+     */
+    private String clientId;
+
+    /**
      * 获取格式化容量（GB）
      */
     public double getTotalCapacityGB() {

@@ -82,6 +82,8 @@ public class WebServer {
         context.addServlet(new ServletHolder(new ConfigServlet()), "/api/config");
         // API - 更新配置
         context.addServlet(new ServletHolder(new UpdateConfigServlet()), "/api/config/update");
+        // API - 客户端上报数据（用于分布式部署，客户端采集后上报到服务端
+        context.addServlet(new ServletHolder(new ReportServlet()), "/api/report");
 
         server.setHandler(context);
         server.start();
@@ -266,6 +268,111 @@ public class WebServer {
                 result.put("error", e.getMessage());
                 objectMapper.writeValue(resp.getWriter(), result);
             }
+        }
+    }
+
+    /**
+     * 客户端数据上报API，接收分布式客户端采集的硬盘数据
+     */
+    private class ReportServlet extends HttpServlet {
+        @Override
+        protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            resp.setContentType("application/json;charset=UTF-8");
+            Map<String, Object> result = new HashMap<>();
+            
+            try {
+                Map<String, Object> report = objectMapper.readValue(req.getInputStream(), Map.class);
+                
+                String clientId = (String) report.get("client_id");
+                Number timestampNum = (Number) report.get("timestamp");
+                List<Map<String, Object>> disks = (List<Map<String, Object>>) report.get("disks");
+
+                if (disks == null || disks.isEmpty()) {
+                    result.put("success", false);
+                    result.put("error", "No disk data in report");
+                    objectMapper.writeValue(resp.getWriter(), result);
+                    return;
+                }
+
+                logger.info("Received report from client: {}, {} disks", clientId, disks.size());
+
+                int savedCount = 0;
+                for (Map<String, Object> diskData : disks) {
+                    // 构建Disk对象
+                    Disk disk = new Disk();
+                    disk.setClientId(clientId);
+                    disk.setDevicePath((String) diskData.get("device_path"));
+                    disk.setBrand((String) diskData.get("brand"));
+                    disk.setModel((String) diskData.get("model"));
+                    disk.setSerialNumber((String) diskData.get("serial_number"));
+                    disk.setTotalCapacity(((Number) diskData.get("total_capacity")).longValue());
+                    disk.setSSD((Boolean) diskData.get("is_ssd"));
+                    disk.setMonitored(true);
+
+                    // 检查是否已经存在这个硬盘（通过设备路径+客户端ID判断）
+                    Optional<Disk> existingDisk = diskDAO.findByClientIdAndDevicePath(clientId, disk.getDevicePath());
+                    Long diskId;
+                    if (existingDisk.isPresent()) {
+                        // 更新现有硬盘
+                        disk.setId(existingDisk.get().getId());
+                        disk.setMonitored(existingDisk.get().isMonitored());
+                        diskDAO.update(disk);
+                        diskId = existingDisk.get().getId();
+                    } else {
+                        // 插入新硬盘
+                        diskId = diskDAO.insert(disk);
+                    }
+
+                    // 保存SMART记录
+                    List<Map<String, Object>> smartAttributes = (List<Map<String, Object>>) diskData.get("smart_attributes");
+                    if (smartAttributes != null) {
+                        for (Map<String, Object> smartData : smartAttributes) {
+                            SmartRecord record = new SmartRecord();
+                            record.setDiskId(diskId);
+                            record.setAttributeId(((Number) smartData.get("attribute_id")).intValue());
+                            record.setAttributeName((String) smartData.get("attribute_name"));
+                            record.setCurrentValue(((Number) smartData.get("current_value")).intValue());
+                            record.setWorstValue(((Number) smartData.get("worst_value")).intValue());
+                            record.setThreshold(((Number) smartData.get("threshold")).intValue());
+                            record.setRawValue(((Number) smartData.get("raw_value")).longValue());
+                            record.setFailed((Boolean) smartData.get("failed"));
+
+                            Number temp = (Number) smartData.get("temperature");
+                            if (temp != null) {
+                                record.setTemperature(temp.intValue());
+                            }
+
+                            smartDAO.insert(record);
+                        }
+                    }
+
+                    // 保存容量记录
+                    List<Map<String, Object>> capacityRecords = (List<Map<String, Object>>) diskData.get("capacity_records");
+                    if (capacityRecords != null) {
+                        for (Map<String, Object> capacityData : capacityRecords) {
+                        CapacityRecord record = new CapacityRecord();
+                        record.setDiskId(diskId);
+                        record.setUsedCapacity(((Number) capacityData.get("used_capacity")).longValue());
+                        record.setAvailableCapacity(((Number) capacityData.get("available_capacity")).longValue());
+                        record.setUsagePercent(((Number) capacityData.get("usage_percent")).intValue());
+                        record.setMountPoint((String) capacityData.get("mount_point"));
+                        capacityDAO.insert(record);
+                        }
+                    }
+
+                    savedCount++;
+                }
+
+                result.put("success", true);
+                result.put("message", "Saved " + savedCount + " disks from client " + clientId);
+                logger.info("Successfully processed report from client " + clientId + ", saved " + savedCount + " disks");
+            } catch (Exception e) {
+                logger.error("Failed to process report", e);
+                result.put("success", false);
+                result.put("error", e.getMessage());
+            }
+
+            objectMapper.writeValue(resp.getWriter(), result);
         }
     }
 }
