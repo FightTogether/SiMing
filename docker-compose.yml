@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  siming:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siming
+    restart: unless-stopped
+    privileged: true # 需要特权才能访问SMART信息
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SIMING_CONFIG=/app/config/application.yml
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - /dev:/dev # 需要访问硬盘设备
+    devices:
+      - /dev/sda:/dev/sda
+      - /dev/sdb:/dev/sdb
+      # 添加更多硬盘设备根据需要
+    network_mode: "bridge"

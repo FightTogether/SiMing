@@ -1,3 +1,192 @@
-# SiMing
+# 司命 (SiMing) - 硬件守护者
 
-司命（硬件守护者），用来守护我的硬件健康。
+> 司命，掌管生死，守护硬件。
+
+SiMing 是一个硬件健康监控工具，目前专注于硬盘健康监控。它可以自动发现系统中的硬盘，记录容量使用情况和 SMART 信息，并通过大模型对硬盘健康状况进行分析，给出建议和预测。
+
+## 功能特性
+
+- ✅ **自动发现硬盘**: 自动扫描系统中的所有硬盘，提取品牌、型号、容量等信息
+- ✅ **灵活监控配置**: 手动选择需要监控的硬盘，支持自定义 cron 表达式进行定时监控
+- ✅ **容量监控**: 持续记录硬盘的使用情况和剩余空间
+- ✅ **SMART 监控**: 读取并保存硬盘 SMART 信息，跟踪关键属性变化
+- ✅ **数据存储**: 使用 SQLite 存储所有监控数据，轻量且高效
+- ✅ **大模型分析**: 接入 OpenAI API，利用大模型分析指定时间区间的硬盘健康状况，给出建议和推测
+- ✅ **配置文件**: 所有配置包括大模型提示词都支持外部配置文件修改
+- ✅ **Docker 支持**: 提供 docker-compose 一键部署
+
+## 快速开始
+
+### 本地运行
+
+需要 Java 17+ 和 Maven
+
+```bash
+# 克隆项目
+git clone https://gitea.why360.cn/wenghy/SiMing.git
+cd SiMing
+
+# 编译
+mvn package -DskipTests
+
+# 配置 (可选)
+# 编辑 config/application.yml 修改配置
+# 设置 OPENAI_API_KEY 环境变量
+
+# 运行
+java -jar target/siming-1.0.0.jar
+```
+
+### Docker Compose 部署
+
+```bash
+# 克隆项目
+git clone https://gitea.why360.cn/wenghy/SiMing.git
+cd SiMing
+
+# 配置
+# 1. 创建配置目录和文件
+mkdir -p config
+cp config/application.yml config/
+# 编辑 config/application.yml 修改配置
+
+# 2. 编辑 docker-compose.yml，添加需要监控的硬盘设备
+
+# 3. 启动
+export OPENAI_API_KEY=your_openai_api_key_here
+docker-compose up -d --build
+
+# 查看日志
+docker-compose logs -f siming
+```
+
+## 使用说明
+
+启动后进入交互式 CLI，支持以下命令：
+
+| 命令 | 说明 |
+|------|------|
+| `list` | 列出所有已发现的硬盘 |
+| `discover` | 重新扫描发现新硬盘 |
+| `monitor <id> [cron]` | 开始监控指定硬盘，可选自定义 cron |
+| `unmonitor <id>` | 停止监控指定硬盘 |
+| `analyze <id> <days>` | 使用大模型分析最近 N 天的硬盘状态 |
+| `analyses` | 列出所有分析结果 |
+| `help` | 显示帮助信息 |
+| `exit/quit` | 退出程序 |
+
+### Cron 表达式示例
+
+- `0 0 * * * ?` - 每小时执行一次
+- `0 0 2 * * ?` - 每天凌晨 2 点执行
+- `0 */6 * * * ?` - 每 6 小时执行一次
+- `0 0 * * 0 ?` - 每周日执行一次
+
+## 配置说明
+
+配置文件使用 YAML 格式，默认位置 `config/application.yml`：
+
+```yaml
+database:
+  # SQLite 数据库文件路径
+  path: "./data/siming.db"
+
+monitor:
+  # 默认监控 cron 表达式
+  defaultCron: "0 0 2 * * ?"
+  # 是否自动启动监控
+  autoStart: true
+
+llm:
+  # OpenAI API Key
+  apiKey: ""
+  # OpenAI API Base URL (可修改为代理地址)
+  apiBaseUrl: "https://api.openai.com/v1"
+  # 使用的模型
+  model: "gpt-3.5-turbo"
+  # 请求超时时间 (毫秒)
+  timeout: 60000
+  # 自定义分析提示词模板，如果为空会使用默认提示词
+  # 你可以在这里定制分析的风格和侧重点
+  promptTemplate: |
+    你是一位资深存储硬件专家，请根据以下硬盘监控数据进行分析...
+```
+
+> **提示**: `apiKey` 也可以通过环境变量 `OPENAI_API_KEY` 设置，优先级更高。
+
+## 数据表结构
+
+- `disks`: 硬盘基本信息表
+- `capacity_records`: 容量监控记录表
+- `smart_records`: SMART 属性监控记录表
+- `analysis_results`: 大模型分析结果表
+
+## 大模型分析
+
+当你积累了一段时间的监控数据后，可以使用 `analyze` 命令让大模型分析硬盘健康状况：
+
+```
+SiMing> analyze 1 30
+```
+
+这会分析 1 号硬盘最近 30 天的数据，大模型会：
+
+1. 总结容量使用变化趋势
+2. 分析 SMART 属性变化，重点关注异常指标
+3. 评估当前硬盘健康状况，给出评分 (0-100)
+4. 判断健康等级：GOOD / WARNING / CRITICAL
+5. 给出相应的建议和未来趋势推测
+
+## 依赖
+
+- Java 17+
+- [smartmontools](https://www.smartmontools.org/) (获取 SMART 信息，Docker 镜像已内置)
+- OpenAI API Key (可选，用于大模型分析)
+
+## 项目结构
+
+```
+.
+├── config/             # 配置文件目录
+│   └── application.yml # 默认配置文件
+├── src/
+│   └── main/
+│       └── java/
+│           └── cn/
+│               └── why360/
+│                   └── siming/
+│                       ├── config/         # 配置类
+│                       ├── dao/            # 数据访问层
+│                       ├── database/       # 数据库管理
+│                       ├── entity/         # 实体类
+│                       ├── scheduler/      # 定时任务调度
+│                       ├── service/        # 业务服务
+│                       └── SimingApplication.java # 入口
+├── Dockerfile          # Docker 镜像构建
+├── docker-compose.yml  # Docker Compose 配置
+├── pom.xml             # Maven 配置
+└── README.md
+```
+
+## 技术栈
+
+- Java 17
+- Maven
+- SQLite
+- Quartz (定时任务)
+- HikariCP (连接池)
+- OpenAI API
+- Lombok
+
+## 许可证
+
+MIT License
+
+## 作者
+
+SiMing 由 [why360](https://github.com/why360) 维护。
+
+## 截图
+
+![CLI Screenshot](docs/screenshot.png)
+*(待补充)*

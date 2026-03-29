@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>司命 - 硬件守护者</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; margin-bottom: 10px; }
+        .card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h2 { color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tr:hover { background: #f8f9fa; }
+        .btn { display: inline-block; padding: 8px 16px; background: #3498db; color: #fff; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 14px; }
+        .btn:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #27ae60; }
+        .btn-success:hover { background: #219a52; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .form-group textarea { min-height: 200px; font-family: monospace; }
+        .alert { padding: 12px; border-radius: 4px; margin-bottom: 15px; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .analysis-result { background: #f8f9fa; padding: 15px; border-radius: 4px; white-space: pre-wrap; }
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 1px solid #ddd; }
+        .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0; margin-bottom: -1px; }
+        .tab.active { background: #fff; border-color: #ddd; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; padding: 30px; border-radius: 8px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal-close { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; border: none; background: none; }
+    </style>
+</head>
+<body>
+<div class='container'>
+    <header>
+        <h1>司命 (SiMing) - 硬件守护者</h1>
+        <p>硬盘健康监控与AI分析</p>
+    </header>
+
+    <div class='tabs'>
+        <div class='tab active' onclick='switchTab("disks")'>硬盘监控</div>
+        <div class='tab' onclick='switchTab("analyses")'>分析历史</div>
+        <div class='tab' onclick='switchTab("config")'>大模型配置</div>
+    </div>
+
+    <!-- 硬盘监控标签页 -->
+    <div id='disks' class='tab-content active'>
+        <div class='card'>
+            <h2>监控硬盘列表</h2>
+            <div id='disks-table'>加载中...</div>
+        </div>
+    </div>
+
+    <!-- 分析历史标签页 -->
+    <div id='analyses' class='tab-content'>
+        <div class='card'>
+            <h2>AI分析历史</h2>
+            <div id='analyses-list'>加载中...</div>
+        </div>
+    </div>
+
+    <!-- 配置标签页 -->
+    <div id='config' class='tab-content'>
+        <div class='card'>
+            <h2>大模型配置</h2>
+            <div id='config-form'>加载中...</div>
+        </div>
+    </div>
+
+    <!-- 详情弹窗 -->
+    <div id='detail-modal' class='modal'>
+        <div class='modal-content'>
+            <button class='modal-close' onclick='closeModal()'>&times;</button>
+            <div id='modal-body'></div>
+        </div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tabName).classList.add('active');
+    if (tabName === 'disks') loadDisks();
+    if (tabName === 'analyses') loadAnalyses();
+    if (tabName === 'config') loadConfig();
+}
+
+async function loadDisks() {
+    const res = await fetch('/api/disks');
+    const disks = await res.json();
+    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>容量</th><th>状态</th><th>操作</th></tr>`;
+    disks.forEach(d => {
+        const badge = d.monitored ? 'badge-success' : 'badge-warning';
+        const text = d.monitored ? '监控中' : '未监控';
+        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${(d.sizeBytes / 1024 / 1024 / 1024).toFixed(2)} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
+        html += `<button class='btn' onclick='showDiskDetail(${d.id})'>查看详情</button> `;
+        html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
+        html += `</td></tr>`;
+    });
+    html += `</table>`;
+    document.getElementById('disks-table').innerHTML = html;
+}
+
+async function loadAnalyses() {
+    const res = await fetch('/api/analyses');
+    const analyses = await res.json();
+    let html = `<table><tr><th>硬盘</th><th>时间范围</th><th>创建时间</th><th>操作</th></tr>`;
+    analyses.forEach(a => {
+        html += `<tr><td>${a.diskModel}</td><td>${a.startTime} ~ ${a.endTime}</td><td>${a.createdAt}</td><td><button class='btn' onclick='showAnalysisResult(${a.id})'>查看结果</button></td></tr>`;
+    });
+    html += `</table>`;
+    document.getElementById('analyses-list').innerHTML = html;
+}
+
+async function loadConfig() {
+    const res = await fetch('/api/config');
+    const config = await res.json();
+    let html = `
+    <form onsubmit='saveConfig(event)'>
+    <div class='form-group'><label>API地址</label><input type='text' name='apiBaseUrl' value='${config.apiBaseUrl}'></div>
+    <div class='form-group'><label>API Key</label><input type='password' name='apiKey' value='${config.apiKey}'></div>
+    <div class='form-group'><label>模型名称</label><input type='text' name='model' value='${config.model}'></div>
+    <div class='form-group'><label>超时时间(ms)</label><input type='number' name='timeout' value='${config.timeout}'></div>
+    <div class='form-group'><label>提示词模板</label><textarea name='promptTemplate'>${config.promptTemplate || ''}</textarea></div>
+    <button type='submit' class='btn btn-success'>保存配置</button>
+    </form>`;
+    document.getElementById('config-form').innerHTML = html;
+}
+
+async function saveConfig(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    data.timeout = parseInt(data.timeout);
+    const res = await fetch('/api/config/update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+        alert('配置已保存');
+    } else {
+        alert('保存失败: ' + result.error);
+    }
+}
+
+function triggerAnalysis(diskId) {
+    const days = prompt('输入分析最近多少天的数据:', 30);
+    if (days) {
+        analyzeDisk(diskId, parseInt(days));
+    }
+}
+
+async function analyzeDisk(diskId, days) {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '分析中...';
+    try {
+        const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({diskId: diskId, days: days})
+        });
+        const result = await res.json();
+        if (result.success) {
+            showModal('分析完成', `<div class='analysis-result'>${escapeHtml(result.result)}</div>`);
+            loadAnalyses();
+        } else {
+            alert('分析失败: ' + result.error);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
+async function showDiskDetail(diskId) {
+    const res = await fetch(`/api/disk/${diskId}/history`);
+    const data = await res.json();
+
+    let html = `<h2>硬盘详情: ${data.disk.brand} ${data.disk.model}</h2>
+    <p><strong>设备:</strong> ${data.disk.devicePath}<br>
+    <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>
+
+    <h3>最近容量记录 (${data.capacity.length}条)</h3>
+    <table>
+    <tr><th>时间</th><th>已用 (GB)</th><th>可用 (GB)</th><th>使用率</th></tr>`;
+
+    data.capacity.slice(-10).forEach(c => {
+        const usedGB = (c.usedBytes / 1024 / 1024 / 1024).toFixed(2);
+        const freeGB = (c.freeBytes / 1024 / 1024 / 1024).toFixed(2);
+        const totalGB = (data.disk.sizeBytes / 1024 / 1024 / 1024).toFixed(2);
+        const usage = ((usedGB / totalGB) * 100).toFixed(1);
+        html += `<tr><td>${c.timestamp}</td><td>${usedGB}</td><td>${freeGB}</td><td>${usage}%</td></tr>`;
+    });
+    html += `</table>`;
+
+    if (data.smart.length > 0) {
+        html += `<h3>最新SMART信息</h3><table><tr><th>属性</th><th>当前值</th><th>阈值</th><th>原始值</th></tr>`;
+        const latest = data.smart[data.smart.length - 1].attributes;
+        latest.forEach(a => {
+            html += `<tr><td>${a.attributeName}</td><td>${a.currentValue}</td><td>${a.threshold}</td><td>${a.rawValue}</td></tr>`;
+        });
+        html += `</table>`;
+    }
+
+    showModal('硬盘详情', html);
+}
+
+async function showAnalysisResult(analysisId) {
+    const res = await fetch(`/api/analyses/${analysisId}`);
+    const analysis = await res.json();
+    const html = `
+        <h2>分析结果</h2>
+        <p><strong>硬盘:</strong> ${analysis.diskModel}<br>
+        <strong>时间范围:</strong> ${analysis.startTime} ~ ${analysis.endTime}<br>
+        <strong>创建时间:</strong> ${analysis.createdAt}</p>
+        <div class='analysis-result'>${escapeHtml(analysis.result)}</div>
+    `;
+    showModal('分析结果', html);
+}
+
+function showModal(title, content) {
+    document.getElementById('modal-body').innerHTML = `<h3>${title}</h3>${content}`;
+    document.getElementById('detail-modal').style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('detail-modal').style.display = 'none';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 点击模态框背景关闭
+document.getElementById('detail-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+// 初始加载
+loadDisks();
+</script>
+</body>
+</html>
