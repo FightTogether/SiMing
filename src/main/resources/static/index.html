@@ -103,12 +103,13 @@ function switchTab(tabName) {
 async function loadDisks() {
     const res = await fetch('/api/disks');
     const disks = await res.json();
-    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>容量</th><th>状态</th><th>操作</th></tr>`;
+    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>操作</th></tr>`;
     disks.forEach(d => {
         const badge = d.monitored ? 'badge-success' : 'badge-warning';
         const text = d.monitored ? '监控中' : '未监控';
-        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${(d.sizeBytes / 1024 / 1024 / 1024).toFixed(2)} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
-        html += `<button class='btn' onclick='showDiskDetail(${d.id})'>查看详情</button> `;
+        const sizeGB = (d.totalCapacity && !isNaN(d.totalCapacity)) ? (Number(d.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
+        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
+        html += `<button class='btn' onclick='event.stopPropagation(); showDiskDetail(${d.id})'>查看详情</button> `;
         html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
         html += `</td></tr>`;
     });
@@ -130,16 +131,19 @@ async function loadAnalyses() {
 async function loadConfig() {
     const res = await fetch('/api/config');
     const config = await res.json();
+    // 这里不能使用模板字符串直接插入，会导致引号问题，需要动态设置textarea值
     let html = `
     <form onsubmit='saveConfig(event)'>
-    <div class='form-group'><label>API地址</label><input type='text' name='apiBaseUrl' value='${config.apiBaseUrl}'></div>
-    <div class='form-group'><label>API Key</label><input type='password' name='apiKey' value='${config.apiKey}'></div>
-    <div class='form-group'><label>模型名称</label><input type='text' name='model' value='${config.model}'></div>
-    <div class='form-group'><label>超时时间(ms)</label><input type='number' name='timeout' value='${config.timeout}'></div>
-    <div class='form-group'><label>提示词模板</label><textarea name='promptTemplate'>${config.promptTemplate || ''}</textarea></div>
+    <div class='form-group'><label>API地址</label><input type='text' name='apiBaseUrl' value="${escapeHtml(config.apiBaseUrl)}"></div>
+    <div class='form-group'><label>API Key</label><input type='password' name='apiKey' value="${escapeHtml(config.apiKey)}"></div>
+    <div class='form-group'><label>模型名称</label><input type='text' name='model' value="${escapeHtml(config.model)}"></div>
+    <div class='form-group'><label>超时时间(ms)</label><input type='number' name='timeout' value="${config.timeout}"></div>
+    <div class='form-group'><label>提示词模板</label><textarea name='promptTemplate'></textarea></div>
     <button type='submit' class='btn btn-success'>保存配置</button>
     </form>`;
     document.getElementById('config-form').innerHTML = html;
+    // 动态设置textarea值避免转义问题
+    document.querySelector('textarea[name="promptTemplate"]').value = config.promptTemplate || '';
 }
 
 async function saveConfig(e) {
@@ -204,10 +208,13 @@ async function showDiskDetail(diskId) {
     <tr><th>时间</th><th>已用 (GB)</th><th>可用 (GB)</th><th>使用率</th></tr>`;
 
     data.capacity.slice(-10).forEach(c => {
-        const usedGB = (c.usedBytes / 1024 / 1024 / 1024).toFixed(2);
-        const freeGB = (c.freeBytes / 1024 / 1024 / 1024).toFixed(2);
-        const totalGB = (data.disk.sizeBytes / 1024 / 1024 / 1024).toFixed(2);
-        const usage = ((usedGB / totalGB) * 100).toFixed(1);
+        const usedGB = (c.usedCapacity && !isNaN(c.usedCapacity)) ? (Number(c.usedCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
+        const freeGB = (c.availableCapacity && !isNaN(c.availableCapacity)) ? (Number(c.availableCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
+        const totalGB = (data.disk.totalCapacity && !isNaN(data.disk.totalCapacity)) ? (Number(data.disk.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
+        let usage = '?';
+        if (usedGB !== '?' && totalGB !== '?') {
+            usage = ((usedGB / totalGB) * 100).toFixed(1);
+        }
         html += `<tr><td>${c.timestamp}</td><td>${usedGB}</td><td>${freeGB}</td><td>${usage}%</td></tr>`;
     });
     html += `</table>`;
@@ -241,6 +248,11 @@ function showModal(title, content) {
     document.getElementById('modal-body').innerHTML = `<h3>${title}</h3>${content}`;
     document.getElementById('detail-modal').style.display = 'block';
 }
+
+// 修复事件冒泡问题，确保点击模态框内部不会关闭弹窗
+document.querySelector('.modal-content').addEventListener('click', function(e) {
+    e.stopPropagation();
+});
 
 function closeModal() {
     document.getElementById('detail-modal').style.display = 'none';

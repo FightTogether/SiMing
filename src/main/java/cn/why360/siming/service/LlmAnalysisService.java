@@ -1,19 +1,26 @@
 package cn.why360.siming.service;
 
-import cn.why360.siming.config.SimingConfig;
+import cn.why360.siming.dao.LlmConfigDAO;
 import cn.why360.siming.dao.AnalysisResultDAO;
 import cn.why360.siming.dao.CapacityRecordDAO;
 import cn.why360.siming.dao.SmartRecordDAO;
+import cn.why360.siming.entity.LlmConfig;
 import cn.why360.siming.entity.AnalysisResult;
 import cn.why360.siming.entity.CapacityRecord;
 import cn.why360.siming.entity.Disk;
 import cn.why360.siming.entity.SmartRecord;
+import com.theokanning.openai.client.OpenAiApi;
 import com.theokanning.openai.completion.chat.ChatCompletionRequest;
 import com.theokanning.openai.completion.chat.ChatMessage;
 import com.theokanning.openai.completion.chat.ChatMessageRole;
 import com.theokanning.openai.service.OpenAiService;
+import okhttp3.OkHttpClient;
+import okhttp3.logging.HttpLoggingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import retrofit2.Retrofit;
+import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
+import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -26,40 +33,108 @@ import java.util.StringJoiner;
 
 /**
  * 大模型分析服务，基于历史监控数据进行硬盘健康分析
+ * LLM配置存储在数据库中，支持在线修改
  */
 public class LlmAnalysisService {
     private static final Logger logger = LoggerFactory.getLogger(LlmAnalysisService.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final SimingConfig.LlmConfig config;
+    private final LlmConfigDAO llmConfigDAO;
     private final AnalysisResultDAO analysisResultDAO;
     private final CapacityRecordDAO capacityRecordDAO;
     private final SmartRecordDAO smartRecordDAO;
-    private OpenAiService openAiService;
+    private volatile OpenAiService openAiService;
 
-    public LlmAnalysisService(SimingConfig.LlmConfig config,
+    public LlmAnalysisService(LlmConfigDAO llmConfigDAO,
                               AnalysisResultDAO analysisResultDAO,
                               CapacityRecordDAO capacityRecordDAO,
                               SmartRecordDAO smartRecordDAO) {
-        this.config = config;
+        this.llmConfigDAO = llmConfigDAO;
         this.analysisResultDAO = analysisResultDAO;
         this.capacityRecordDAO = capacityRecordDAO;
         this.smartRecordDAO = smartRecordDAO;
 
-        if (config.getApiKey() != null && !config.getApiKey().isEmpty() && !"your-api-key-here".equals(config.getApiKey())) {
-            this.openAiService = new OpenAiService(config.getApiKey(), Duration.ofMillis(config.getTimeout()));
-            logger.info("LLM service initialized with model: {}", config.getModel());
+        // 初始化OpenAi服务
+        reloadOpenAiClient();
+    }
+
+    /**
+     * 重新加载配置并重建OpenAi客户端
+     */
+    public synchronized void reloadOpenAiClient() {
+        LlmConfig config = getCurrentConfig();
+        if (config == null) {
+            logger.warn("No LLM configuration found in database, analysis service will be disabled");
+            this.openAiService = null;
+            return;
+        }
+
+        String apiKey = config.getApiKey();
+        if (apiKey != null && !apiKey.isEmpty() && !"your-api-key-here".equals(apiKey)) {
+            String apiBaseUrl = config.getApiBaseUrl();
+            Duration timeout = Duration.ofMillis(config.getTimeout());
+            
+            // 对于0.16.1版本，手动构建支持自定义baseUrl
+            HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
+            logging.setLevel(HttpLoggingInterceptor.Level.NONE);
+            
+            OkHttpClient client = new OkHttpClient.Builder()
+                    .addInterceptor(chain -> {
+                        okhttp3.Request request = chain.request().newBuilder()
+                                .addHeader("Authorization", "Bearer " + apiKey)
+                                .build();
+                        return chain.proceed(request);
+                    })
+                    .addInterceptor(logging)
+                    .connectTimeout(timeout)
+                    .readTimeout(timeout)
+                    .writeTimeout(timeout)
+                    .build();
+            
+            // 确保baseUrl以斜杠结尾，满足Retrofit要求
+            String finalBaseUrl;
+            if (apiBaseUrl != null && !apiBaseUrl.isEmpty()) {
+                if (!apiBaseUrl.endsWith("/")) {
+                    finalBaseUrl = apiBaseUrl + "/";
+                } else {
+                    finalBaseUrl = apiBaseUrl;
+                }
+            } else {
+                finalBaseUrl = "https://api.openai.com/v1/";
+            }
+            Retrofit retrofit = new Retrofit.Builder()
+                    .baseUrl(finalBaseUrl)
+                    .client(client)
+                    .addConverterFactory(JacksonConverterFactory.create())
+                    .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                    .build();
+            
+            OpenAiApi openAiApi = retrofit.create(OpenAiApi.class);
+            this.openAiService = new OpenAiService(openAiApi);
+            
+            if (apiBaseUrl != null && !apiBaseUrl.isEmpty()) {
+                logger.info("LLM service initialized/reloaded with model: {} at {}", config.getModel(), apiBaseUrl);
+            } else {
+                logger.info("LLM service initialized/reloaded with model: {}", config.getModel());
+            }
         } else {
+            this.openAiService = null;
             logger.warn("LLM API key not configured, analysis service will be disabled");
         }
+    }
+
+    /**
+     * 获取当前配置（从数据库）
+     */
+    public LlmConfig getCurrentConfig() {
+        return llmConfigDAO.getCurrent().orElse(null);
     }
 
     /**
      * 检查是否配置了API Key
      */
     public boolean isConfigured() {
-        return openAiService != null && config.getApiKey() != null &&
-               !config.getApiKey().isEmpty() && !"your-api-key-here".equals(config.getApiKey());
+        return openAiService != null;
     }
 
     /**
@@ -76,12 +151,13 @@ public class LlmAnalysisService {
         // 获取SMART数据
         List<SmartRecord> smartRecords = smartRecordDAO.findByDiskIdAndTimeRange(disk.getId(), startTime, endTime);
 
-        // 构建提示词
-        String prompt = buildPrompt(disk, startTime, endTime, capacityRecords, smartRecords);
+        // 获取当前配置并构建提示词
+        LlmConfig config = getCurrentConfig();
+        String prompt = buildPrompt(config, disk, startTime, endTime, capacityRecords, smartRecords);
         logger.debug("Built analysis prompt for disk {}: {} characters", disk.getId(), prompt.length());
 
         // 调用大模型
-        String response = callLlm(prompt);
+        String response = callLlm(prompt, config);
         if (response == null || response.isEmpty()) {
             throw new RuntimeException("Failed to get response from LLM");
         }
@@ -108,7 +184,7 @@ public class LlmAnalysisService {
     /**
      * 构建提示词
      */
-    private String buildPrompt(Disk disk, LocalDateTime startTime, LocalDateTime endTime,
+    private String buildPrompt(LlmConfig config, Disk disk, LocalDateTime startTime, LocalDateTime endTime,
                                 List<CapacityRecord> capacityRecords, List<SmartRecord> smartRecords) {
         String template = config.getPromptTemplate();
         if (template == null || template.isEmpty()) {
@@ -246,7 +322,7 @@ public class LlmAnalysisService {
     /**
      * 调用大模型API
      */
-    private String callLlm(String prompt) {
+    private String callLlm(String prompt, LlmConfig config) {
         try {
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(new ChatMessage(ChatMessageRole.USER.value(), prompt));
@@ -328,7 +404,7 @@ public class LlmAnalysisService {
     /**
      * 获取默认提示词模板
      */
-    private String getDefaultPromptTemplate() {
+    public static String getDefaultPromptTemplate() {
         return "你是一位专业的存储硬件健康分析师，请根据以下硬盘监控数据进行分析：\n\n" +
                 "硬盘基本信息：\n" +
                 "品牌：{{brand}}\n" +
@@ -354,17 +430,18 @@ public class LlmAnalysisService {
     }
 
     /**
-     * 重新加载配置（更新API配置）
+     * 保存或更新配置
      */
-    public void reloadConfig(SimingConfig config) {
-        SimingConfig.LlmConfig llmConfig = config.getLlm();
-        if (llmConfig.getApiKey() != null && !llmConfig.getApiKey().isEmpty() && !"your-api-key-here".equals(llmConfig.getApiKey())) {
-            this.openAiService = new OpenAiService(llmConfig.getApiKey(), Duration.ofMillis(llmConfig.getTimeout()));
-            logger.info("LLM service reloaded with model: {}", llmConfig.getModel());
+    public void saveConfig(LlmConfig config) {
+        LlmConfig current = getCurrentConfig();
+        if (current != null) {
+            config.setId(current.getId());
+            llmConfigDAO.update(config);
         } else {
-            this.openAiService = null;
-            logger.warn("LLM API key not configured after reload, analysis service disabled");
+            llmConfigDAO.save(config);
         }
+        // 重新加载OpenAi客户端
+        reloadOpenAiClient();
     }
 
     /**

@@ -1,72 +1,30 @@
 package cn.why360.siming.config;
 
 import lombok.Data;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
-import org.yaml.snakeyaml.LoaderOptions;
-
-import java.io.InputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 /**
  * 应用配置类
+ * 从application.properties加载配置
+ * LLM配置已迁移到数据库llm_config表，支持在线修改
  */
 @Data
+@Component
+@ConfigurationProperties(prefix = "siming")
 public class SimingConfig {
+    private Database database = new Database();
+    private Monitor monitor = new Monitor();
+    private boolean localMode = true;
 
-    private WebConfig web = new WebConfig();
-    private DatabaseConfig database = new DatabaseConfig();
-    private MonitorConfig monitor = new MonitorConfig();
-    private LlmConfig llm = new LlmConfig();
-
-    /**
-     * Web服务配置
-     */
     @Data
-    public static class WebConfig {
-        private boolean enabled = true;
-        private int port = 8080;
-    }
-
-    /**
-     * 从文件加载配置
-     */
-    public static SimingConfig loadFromFile(String path) throws IOException {
-        LoaderOptions options = new LoaderOptions();
-        Yaml yaml = new Yaml(new Constructor(SimingConfig.class, options));
-        try (InputStream inputStream = new FileInputStream(path)) {
-            return yaml.load(inputStream);
-        }
-    }
-
-    /**
-     * 数据库配置
-     */
-    @Data
-    public static class DatabaseConfig {
-        private String path = "./data/siming.db";
+    public static class Database {
         private String databasePath = "./data/siming.db";
     }
 
-    /**
-     * 监控配置
-     */
     @Data
-    public static class MonitorConfig {
+    public static class Monitor {
         private String defaultCron = "0 0 2 * * ?";
         private boolean autoStart = true;
-    }
-
-    /**
-     * 大模型配置
-     */
-    @Data
-    public static class LlmConfig {
-        private String apiBaseUrl = "https://api.openai.com/v1";
-        private String apiKey = "";
-        private String model = "gpt-3.5-turbo";
-        private int timeout = 60000;
-        private String promptTemplate = "";
     }
 }

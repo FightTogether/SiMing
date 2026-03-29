@@ -1,6 +1,9 @@
 package cn.why360.siming.database;
 
 import cn.why360.siming.config.SimingConfig;
+import cn.why360.siming.entity.LlmConfig;
+import cn.why360.siming.dao.LlmConfigDAO;
+import cn.why360.siming.service.LlmAnalysisService;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
@@ -18,14 +21,13 @@ public class DatabaseManager {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseManager.class);
 
     private final HikariDataSource dataSource;
-    private final SimingConfig.DatabaseConfig config;
+    private final SimingConfig.Database config;
 
     public DatabaseManager(SimingConfig config) {
         this.config = config.getDatabase();
 
         // 确保数据目录存在
-        String dbPath = config.getDatabase().getDatabasePath() != null ?
-                config.getDatabase().getDatabasePath() : config.getDatabase().getPath();
+        String dbPath = this.config.getDatabasePath();
         File dbFile = new File(dbPath);
         File dbDir = dbFile.getParentFile();
         if (dbDir != null && !dbDir.exists()) {
@@ -111,6 +113,18 @@ public class DatabaseManager {
             "  recommendations TEXT," +
             "  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
             "  FOREIGN KEY (disk_id) REFERENCES disks(id)" +
+            ")",
+
+            // LLM配置表 - 存储大模型API配置和提示词模板
+            "CREATE TABLE IF NOT EXISTS llm_config (" +
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "  api_base_url TEXT NOT NULL," +
+            "  api_key TEXT," +
+            "  model TEXT NOT NULL," +
+            "  timeout INTEGER NOT NULL DEFAULT 60000," +
+            "  prompt_template TEXT NOT NULL," +
+            "  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+            "  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" +
             ")"
         };
 
@@ -119,6 +133,37 @@ public class DatabaseManager {
 
             for (String sql : createTables) {
                 stmt.execute(sql);
+            }
+            
+            // 数据库迁移：为已存在的disks表添加client_id列
+            try {
+                // 先尝试添加client_id列，如果表已经存在的话
+                stmt.execute("ALTER TABLE disks ADD COLUMN client_id TEXT");
+                try {
+                    stmt.execute("CREATE UNIQUE INDEX idx_disks_client_device ON disks(client_id, device_path)");
+                } catch (SQLException e2) {
+                    // 索引创建失败也没关系
+                    logger.info("Note: Could not create unique index (may already exist): {}", e2.getMessage());
+                }
+            } catch (SQLException e) {
+                // 如果列已经存在，SQLite会报错，这是正常的，忽略即可
+                logger.info("Note: client_id column already exists, skipping migration");
+            }
+
+            // 检查是否有LLM配置，如果没有则插入默认配置
+            try {
+                java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM llm_config");
+                if (rs.next() && rs.getInt(1) == 0) {
+                    // 插入默认配置
+                    String defaultPrompt = LlmAnalysisService.getDefaultPromptTemplate();
+                    stmt.execute("INSERT INTO llm_config (api_base_url, api_key, model, timeout, prompt_template) " +
+                            "VALUES ('https://api.openai.com/v1', '', 'gpt-3.5-turbo', 60000, '" +
+                            defaultPrompt.replace("'", "''") + "')");
+                    logger.info("Initialized default LLM configuration in database");
+                }
+                rs.close();
+            } catch (SQLException e) {
+                logger.warn("Could not check/initialize default LLM config: {}", e.getMessage());
             }
 
             logger.info("Database initialized successfully");

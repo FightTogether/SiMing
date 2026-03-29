@@ -1,47 +1,33 @@
 package cn.why360.siming;
 
 import cn.why360.siming.config.SimingConfig;
-import cn.why360.siming.dao.AnalysisResultDAO;
-import cn.why360.siming.dao.CapacityRecordDAO;
 import cn.why360.siming.dao.DiskDAO;
 import cn.why360.siming.dao.SmartRecordDAO;
-import cn.why360.siming.database.DatabaseManager;
-import cn.why360.siming.entity.AnalysisResult;
 import cn.why360.siming.entity.Disk;
 import cn.why360.siming.scheduler.SchedulerManager;
 import cn.why360.siming.service.CapacityMonitorService;
 import cn.why360.siming.service.DiskDiscoveryService;
 import cn.why360.siming.service.LlmAnalysisService;
 import cn.why360.siming.service.SmartReaderService;
-import cn.why360.siming.web.WebServer;
 import org.quartz.SchedulerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ConfigurableApplicationContext;
 
-import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Scanner;
 
 /**
  * 司命 - 硬件守护者主应用程序
+ * Spring Boot版本
  */
+@SpringBootApplication
+@EnableConfigurationProperties
 public class SimingApplication {
     private static final Logger logger = LoggerFactory.getLogger(SimingApplication.class);
-
-    private static SimingConfig config;
-    private static DatabaseManager dbManager;
-    private static DiskDAO diskDAO;
-    private static CapacityRecordDAO capacityRecordDAO;
-    private static SmartRecordDAO smartRecordDAO;
-    private static AnalysisResultDAO analysisResultDAO;
-    private static DiskDiscoveryService discoveryService;
-    private static CapacityMonitorService capacityService;
-    private static SmartReaderService smartReaderService;
-    private static LlmAnalysisService llmAnalysisService;
-    private static SchedulerManager schedulerManager;
-    private static WebServer webServer;
 
     public static void main(String[] args) {
         try {
@@ -51,26 +37,40 @@ public class SimingApplication {
             logger.info("  GitHub: https://github.com/why360/SiMing");
             logger.info("=" + "=".repeat(50));
 
-            // 加载配置
-            loadConfig();
-            logger.info("Configuration loaded");
+            // 启动Spring Boot - Spring Boot自动处理DispatcherServlet和所有@Controller注解
+            ConfigurableApplicationContext context = SpringApplication.run(SimingApplication.class, args);
 
-            // 初始化数据库
-            initDatabase();
-            logger.info("Database initialized at {}", config.getDatabase().getDatabasePath());
+            // 获取配置和Bean
+            SimingConfig config = context.getBean(SimingConfig.class);
+            DiskDAO diskDAO = context.getBean(DiskDAO.class);
+            DiskDiscoveryService discoveryService = context.getBean(DiskDiscoveryService.class);
+            CapacityMonitorService capacityService = context.getBean(CapacityMonitorService.class);
+            SmartReaderService smartReaderService = context.getBean(SmartReaderService.class);
+            LlmAnalysisService llmAnalysisService = context.getBean(LlmAnalysisService.class);
 
-            // 初始化服务
-            initServices();
-            logger.info("All services initialized");
+            logger.info("Configuration loaded from application.properties");
 
-            // 发现硬盘
-            discoverAndSaveDisks();
+            // 如果是本地模式，发现硬盘并启动调度
+            if (config.isLocalMode()) {
+                // 发现硬盘
+                discoverAndSaveDisks(discoveryService, diskDAO);
+                // 启动调度器
+                SchedulerManager schedulerManager = new SchedulerManager(
+                        config.getMonitor(),
+                        diskDAO,
+                        capacityService,
+                        smartReaderService,
+                        context.getBean(SmartRecordDAO.class));
+                startScheduler(schedulerManager);
+                logger.info("Local mode: disk discovery and monitoring scheduler started");
+            } else {
+                logger.info("Running in server-only mode, all data will come from remote clients");
+            }
 
-            // 启动调度器
-            startScheduler();
-
-            // 交互式CLI
-            runInteractiveCli();
+            // Spring Boot已经自动启动Tomcat，不需要手动启动Web服务器
+            logger.info("SiMing started successfully!");
+            int port = context.getEnvironment().getProperty("server.port", Integer.class, 8080);
+            logger.info("Web interface available at http://localhost:{}", port);
 
         } catch (Exception e) {
             logger.error("Application failed to start", e);
@@ -79,71 +79,9 @@ public class SimingApplication {
     }
 
     /**
-     * 加载配置文件
-     */
-    private static void loadConfig() throws IOException {
-        String configPath = System.getProperty("siming.config", "config/application.yml");
-        java.io.File file = new java.io.File(configPath);
-        if (file.exists()) {
-            config = SimingConfig.loadFromFile(configPath);
-        } else {
-            // 创建默认配置
-            config = new SimingConfig();
-            if (System.getenv("OPENAI_API_KEY") != null) {
-                config.getLlm().setApiKey(System.getenv("OPENAI_API_KEY"));
-            }
-        }
-    }
-
-    /**
-     * 初始化数据库
-     */
-    private static void initDatabase() {
-        dbManager = new DatabaseManager(config);
-        dbManager.initDatabase();
-        diskDAO = new DiskDAO(dbManager);
-        capacityRecordDAO = new CapacityRecordDAO(dbManager);
-        smartRecordDAO = new SmartRecordDAO(dbManager);
-        analysisResultDAO = new AnalysisResultDAO(dbManager);
-    }
-
-    /**
-     * 初始化所有服务
-     */
-    private static void initServices() throws Exception {
-        discoveryService = new DiskDiscoveryService();
-        capacityService = new CapacityMonitorService(capacityRecordDAO);
-        smartReaderService = new SmartReaderService();
-        llmAnalysisService = new LlmAnalysisService(
-                config.getLlm(),
-                analysisResultDAO,
-                capacityRecordDAO,
-                smartRecordDAO);
-
-        schedulerManager = new SchedulerManager(
-                config.getMonitor(),
-                diskDAO,
-                capacityService,
-                smartReaderService,
-                smartRecordDAO);
-
-        // 启动Web服务器
-        if (config.getWeb().isEnabled()) {
-            webServer = new WebServer(
-                    config,
-                    diskDAO,
-                    capacityRecordDAO,
-                    smartRecordDAO,
-                    analysisResultDAO,
-                    llmAnalysisService);
-            webServer.start();
-        }
-    }
-
-    /**
      * 发现硬盘并保存到数据库
      */
-    private static void discoverAndSaveDisks() {
+    private static void discoverAndSaveDisks(DiskDiscoveryService discoveryService, DiskDAO diskDAO) {
         logger.info("Discovering disks...");
         List<Disk> disks = discoveryService.discoverDisks();
 
@@ -170,285 +108,8 @@ public class SimingApplication {
     /**
      * 启动调度器
      */
-    private static void startScheduler() throws SchedulerException {
+    private static void startScheduler(SchedulerManager schedulerManager) throws SchedulerException {
         schedulerManager.start();
         logger.info("Monitoring scheduler started");
-    }
-
-    /**
-     * 运行交互式命令行界面
-     */
-    private static void runInteractiveCli() {
-        Scanner scanner = new Scanner(System.in);
-        boolean running = true;
-
-        logger.info("\n=== SiMing Interactive CLI ===");
-        printHelp();
-
-        while (running) {
-            System.out.print("\nSiMing> ");
-            if (!scanner.hasNextLine()) {
-                break;
-            }
-
-            String command = scanner.nextLine().trim().toLowerCase();
-            switch (command) {
-                case "list":
-                    listDisks();
-                    break;
-                case "help":
-                    printHelp();
-                    break;
-                case "exit":
-                case "quit":
-                    running = false;
-                    shutdown();
-                    break;
-                case "discover":
-                    discoverAndSaveDisks();
-                    break;
-                case "monitor":
-                    handleMonitorCommand(scanner);
-                    break;
-                case "unmonitor":
-                    handleUnmonitorCommand(scanner);
-                    break;
-                case "analyze":
-                    handleAnalysisCommand(scanner);
-                    break;
-                case "analyses":
-                    listAnalyses();
-                    break;
-                default:
-                    if (!command.isEmpty()) {
-                        System.out.println("Unknown command: " + command);
-                        printHelp();
-                    }
-            }
-        }
-
-        scanner.close();
-    }
-
-    /**
-     * 打印帮助信息
-     */
-    private static void printHelp() {
-        System.out.println("Available commands:");
-        System.out.println("  list      - List all discovered disks");
-        System.out.println("  discover  - Rescan and discover new disks");
-        System.out.println("  monitor   - Start monitoring a disk (usage: monitor <id> [cron])");
-        System.out.println("  unmonitor - Stop monitoring a disk (usage: unmonitor <id>)");
-        System.out.println("  analyze   - Analyze disk health with LLM (usage: analyze <id> <days>)");
-        System.out.println("  analyses  - List all analysis results");
-        System.out.println("  help      - Show this help");
-        System.out.println("  exit/quit - Exit the application");
-    }
-
-    /**
-     * 列出所有硬盘
-     */
-    private static void listDisks() {
-        List<Disk> disks = diskDAO.findAll();
-        System.out.println("\nDiscovered disks:");
-        System.out.printf("%-3s | %-12s | %-10s | %-20s | %-10s | %s%n",
-                "ID", "Device", "Type", "Model", "Size (GB)", "Monitored");
-        System.out.println("--------------------------------------------------------------------------");
-
-        for (Disk disk : disks) {
-            System.out.printf("%3d | %-12s | %-10s | %-20s | %10.2f | %b%n",
-                    disk.getId(),
-                    disk.getDevicePath(),
-                    disk.isSSD() ? "SSD" : "HDD",
-                    (disk.getBrand() + " " + disk.getModel()).trim(),
-                    disk.getTotalCapacityGB(),
-                    disk.isMonitored());
-        }
-        System.out.println();
-    }
-
-    /**
-     * 处理监控命令
-     */
-    private static void handleMonitorCommand(Scanner scanner) {
-        System.out.print("Enter disk ID to monitor: ");
-        if (!scanner.hasNextInt()) {
-            System.out.println("Invalid disk ID");
-            scanner.nextLine();
-            return;
-        }
-
-        int diskId = scanner.nextInt();
-        scanner.nextLine(); // 消费换行
-
-        Optional<Disk> diskOpt = diskDAO.findById((long) diskId);
-        if (diskOpt.isEmpty()) {
-            System.out.println("Disk with ID " + diskId + " not found");
-            return;
-        }
-        Disk disk = diskOpt.get();
-
-        System.out.printf("Current default cron is: %s%n", config.getMonitor().getDefaultCron());
-        System.out.print("Enter custom cron expression (or press Enter to use default): ");
-        String cron = scanner.nextLine().trim();
-
-        if (cron.isEmpty()) {
-            cron = config.getMonitor().getDefaultCron();
-        }
-
-        disk.setMonitored(true);
-        disk.setMonitorCron(cron);
-        diskDAO.save(disk);
-
-        try {
-            schedulerManager.rescheduleAll();
-        } catch (SchedulerException e) {
-            logger.error("Failed to reschedule", e);
-            System.out.println("Failed to reschedule: " + e.getMessage());
-            return;
-        }
-
-        System.out.printf("Now monitoring disk %d (%s) with cron: %s%n",
-                diskId, disk.getDevicePath(), cron);
-    }
-
-    /**
-     * 处理停止监控命令
-     */
-    private static void handleUnmonitorCommand(Scanner scanner) {
-        System.out.print("Enter disk ID to stop monitoring: ");
-        if (!scanner.hasNextInt()) {
-            System.out.println("Invalid disk ID");
-            scanner.nextLine();
-            return;
-        }
-
-        int diskId = scanner.nextInt();
-        scanner.nextLine();
-
-        Optional<Disk> diskOpt = diskDAO.findById((long) diskId);
-        if (diskOpt.isEmpty()) {
-            System.out.println("Disk with ID " + diskId + " not found");
-            return;
-        }
-        Disk disk = diskOpt.get();
-
-        disk.setMonitored(false);
-        diskDAO.save(disk);
-
-        try {
-            schedulerManager.rescheduleAll();
-        } catch (SchedulerException e) {
-            logger.error("Failed to reschedule", e);
-            System.out.println("Failed to reschedule: " + e.getMessage());
-            return;
-        }
-
-        System.out.printf("Stopped monitoring disk %d (%s)%n", diskId, disk.getDevicePath());
-    }
-
-    /**
-     * 处理分析命令
-     */
-    private static void handleAnalysisCommand(Scanner scanner) {
-        if (!llmAnalysisService.isConfigured()) {
-            System.out.println("LLM service is not configured. Please set OPENAI_API_KEY in environment.");
-            return;
-        }
-
-        System.out.print("Enter disk ID to analyze: ");
-        if (!scanner.hasNextInt()) {
-            System.out.println("Invalid disk ID");
-            scanner.nextLine();
-            return;
-        }
-
-        int diskId = scanner.nextInt();
-        System.out.print("Enter number of days to analyze: ");
-        if (!scanner.hasNextInt()) {
-            System.out.println("Invalid number of days");
-            scanner.nextLine();
-            return;
-        }
-
-        int days = scanner.nextInt();
-        scanner.nextLine();
-
-        Optional<Disk> diskOpt = diskDAO.findById((long) diskId);
-        if (diskOpt.isEmpty()) {
-            System.out.println("Disk with ID " + diskId + " not found");
-            return;
-        }
-        Disk disk = diskOpt.get();
-
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusDays(days);
-
-        System.out.printf("Analyzing disk %s (%s) from last %d days...%n",
-                diskId, disk.getDevicePath(), days);
-
-        try {
-            long startTs = System.currentTimeMillis();
-            AnalysisResult result = llmAnalysisService.analyzeDisk(disk, startTime, endTime);
-            long elapsed = System.currentTimeMillis() - startTs;
-
-            System.out.println("\n=== Analysis Result ===");
-            System.out.println("Disk: " + disk.getBrand() + " " + disk.getModel());
-            System.out.println("Time range: " + startTime + " to " + endTime);
-            if (result.getHealthScore() != null) {
-                System.out.println("Health Score: " + result.getHealthScore() + "/100");
-            }
-            if (result.getHealthLevel() != null) {
-                System.out.println("Health Level: " + result.getHealthLevel());
-            }
-            System.out.println("\nFull Analysis:");
-            System.out.println(result.getAnalysisContent());
-            System.out.printf("%nAnalysis completed in %.2f seconds%n", (double) elapsed / 1000);
-        } catch (Exception e) {
-            logger.error("Analysis failed", e);
-            System.out.println("Analysis failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 列出所有分析结果
-     */
-    private static void listAnalyses() {
-        List<AnalysisResult> results = analysisResultDAO.findAll();
-        System.out.println("\nAnalysis Results:");
-        System.out.printf("%-3s | %-4s | %-10s | %-10s | %s%n",
-                "ID", "DiskID", "Score", "Level", "Created");
-        System.out.println("------------------------------------------------");
-
-        for (AnalysisResult result : results) {
-            System.out.printf("%3d | %4d | %10s | %10s | %s%n",
-                    result.getId(),
-                    result.getDiskId(),
-                    result.getHealthScore() != null ? result.getHealthScore() : "-",
-                    result.getHealthLevel() != null ? result.getHealthLevel() : "-",
-                    result.getCreateTime());
-        }
-        System.out.println();
-    }
-
-    /**
-     * 关闭应用程序
-     */
-    private static void shutdown() {
-        try {
-            logger.info("Shutting down...");
-            if (webServer != null) {
-                webServer.stop();
-            }
-            if (schedulerManager != null) {
-                schedulerManager.shutdown();
-            }
-            if (dbManager != null) {
-                dbManager.close();
-            }
-            logger.info("Goodbye!");
-        } catch (Exception e) {
-            logger.error("Error during shutdown", e);
-        }
     }
 }

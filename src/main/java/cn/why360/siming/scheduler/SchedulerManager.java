@@ -21,10 +21,10 @@ public class SchedulerManager {
     private static final Logger logger = LoggerFactory.getLogger(SchedulerManager.class);
 
     private final Scheduler scheduler;
-    private final SimingConfig.MonitorConfig monitorConfig;
+    private final SimingConfig.Monitor monitorConfig;
     private final DiskDAO diskDAO;
 
-    public SchedulerManager(SimingConfig.MonitorConfig monitorConfig,
+    public SchedulerManager(SimingConfig.Monitor monitorConfig,
                             DiskDAO diskDAO,
                             CapacityMonitorService capacityService,
                             SmartReaderService smartReaderService,

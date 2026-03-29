@@ -1,0 +1,11 @@
+# SiMing 采集客户端配置文件
+# 复制此文件为 client-config.conf 并修改相应配置
+
+# 服务端地址，例如 http://your-server:8080
+SERVER_URL="http://localhost:8080"
+
+# 客户端ID，用于标识不同的客户端，默认使用主机名（留空则使用主机名）
+# CLIENT_ID="my-client-id"
+
+# 数据存储根目录，采集到的数据会保存在这里（默认是 ./data）
+# DATA_ROOT="./data"
