@@ -122,6 +122,8 @@ public class DatabaseManager {
             "  api_key TEXT," +
             "  model TEXT NOT NULL," +
             "  timeout INTEGER NOT NULL DEFAULT 60000," +
+            "  temperature REAL," +
+            "  max_tokens INTEGER," +
             "  prompt_template TEXT NOT NULL," +
             "  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
             "  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" +
@@ -156,14 +158,30 @@ public class DatabaseManager {
                 if (rs.next() && rs.getInt(1) == 0) {
                     // 插入默认配置
                     String defaultPrompt = LlmAnalysisService.getDefaultPromptTemplate();
-                    stmt.execute("INSERT INTO llm_config (api_base_url, api_key, model, timeout, prompt_template) " +
-                            "VALUES ('https://api.openai.com/v1', '', 'gpt-3.5-turbo', 60000, '" +
+                    stmt.execute("INSERT INTO llm_config (api_base_url, api_key, model, timeout, temperature, max_tokens, prompt_template) " +
+                            "VALUES ('https://api.openai.com/v1', '', 'gpt-3.5-turbo', 60000, 0.7, 1000, '" +
                             defaultPrompt.replace("'", "''") + "')");
                     logger.info("Initialized default LLM configuration in database");
                 }
                 rs.close();
             } catch (SQLException e) {
                 logger.warn("Could not check/initialize default LLM config: {}", e.getMessage());
+            }
+
+            // 数据库迁移：为已存在的llm_config表添加temperature和max_tokens列
+            try {
+                stmt.execute("ALTER TABLE llm_config ADD COLUMN temperature REAL");
+                logger.info("Added temperature column to llm_config table");
+            } catch (SQLException e) {
+                // 如果列已经存在，SQLite会报错，这是正常的，忽略即可
+                logger.info("Note: temperature column already exists in llm_config, skipping migration");
+            }
+            try {
+                stmt.execute("ALTER TABLE llm_config ADD COLUMN max_tokens INTEGER");
+                logger.info("Added max_tokens column to llm_config table");
+            } catch (SQLException e) {
+                // 如果列已经存在，SQLite会报错，这是正常的，忽略即可
+                logger.info("Note: max_tokens column already exists in llm_config, skipping migration");
             }
 
             logger.info("Database initialized successfully");

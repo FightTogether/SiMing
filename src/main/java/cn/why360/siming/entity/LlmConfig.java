@@ -38,6 +38,16 @@ public class LlmConfig {
     private Integer timeout;
     
     /**
+     * 温度参数（控制随机性）
+     */
+    private Double temperature;
+    
+    /**
+     * 最大生成token数
+     */
+    private Integer maxTokens;
+    
+    /**
      * 提示词模板
      */
     private String promptTemplate;

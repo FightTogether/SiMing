@@ -74,16 +74,51 @@ public class LlmAnalysisService {
             String apiBaseUrl = config.getApiBaseUrl();
             Duration timeout = Duration.ofMillis(config.getTimeout());
             
+            // OpenAiApi接口中endpoint已经是"/v1/chat/completions"
+            // 支持两种模式：
+            // 1. 用户只提供基础URL（如 https://ark.cn-beijing.volces.com/api/coding），我们添加 /v1/chat/completions
+            // 2. 用户已经提供版本路径（如 https://ark.cn-beijing.volces.com/api/coding/v3），我们只添加 /chat/completions
+            String baseUrl = apiBaseUrl;
+            if (baseUrl == null || baseUrl.isEmpty()) {
+                baseUrl = "https://api.openai.com/";
+            }
+            // 确保baseUrl以斜杠结尾
+            if (!baseUrl.endsWith("/")) {
+                baseUrl = baseUrl + "/";
+            }
+
+            // 检查用户的baseUrl是否已经包含了版本号路径（如v1, v2, v3等）
+            boolean containsVersionPath = baseUrl.matches(".*/v\\d+/?$");
+            String baseUrlForRetrofit;
+            String endpointToRemove = "/v1";
+
             // 对于0.16.1版本，手动构建支持自定义baseUrl
             HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
-            logging.setLevel(HttpLoggingInterceptor.Level.NONE);
+            logging.setLevel(HttpLoggingInterceptor.Level.BASIC);
             
+            String userBaseUrl = baseUrl;
             OkHttpClient client = new OkHttpClient.Builder()
                     .addInterceptor(chain -> {
-                        okhttp3.Request request = chain.request().newBuilder()
-                                .addHeader("Authorization", "Bearer " + apiKey)
-                                .build();
-                        return chain.proceed(request);
+                        okhttp3.Request originalRequest = chain.request();
+                        okhttp3.HttpUrl originalHttpUrl = originalRequest.url();
+                        okhttp3.Request.Builder requestBuilder = originalRequest.newBuilder()
+                                .addHeader("Authorization", "Bearer " + apiKey);
+                        
+                        // 如果用户已经提供了版本路径，完整替换整个路径
+                        // 原始endpoint是 /v1/chat/completions
+                        // 如果用户baseUrl已经包含版本，我们使用用户baseUrl + /chat/completions
+                        if (userBaseUrl.matches(".*/v\\d+/?$")) {
+                            // 构建完整URL：用户提供的baseUrl + chat/completions
+                            String fullUrl = userBaseUrl + "chat/completions";
+                            okhttp3.HttpUrl newHttpUrl = okhttp3.HttpUrl.parse(fullUrl);
+                            if (newHttpUrl != null) {
+                                requestBuilder.url(newHttpUrl);
+                                logger.debug("Using complete URL with user-provided version: {}", fullUrl);
+                            }
+                        }
+                        // 如果用户没有提供版本，保持原有路径：baseUrl + v1/chat/completions
+                        
+                        return chain.proceed(requestBuilder.build());
                     })
                     .addInterceptor(logging)
                     .connectTimeout(timeout)
@@ -91,21 +126,19 @@ public class LlmAnalysisService {
                     .writeTimeout(timeout)
                     .build();
             
-            // 确保baseUrl以斜杠结尾，满足Retrofit要求
-            String finalBaseUrl;
-            if (apiBaseUrl != null && !apiBaseUrl.isEmpty()) {
-                if (!apiBaseUrl.endsWith("/")) {
-                    finalBaseUrl = apiBaseUrl + "/";
-                } else {
-                    finalBaseUrl = apiBaseUrl;
-                }
-            } else {
-                finalBaseUrl = "https://api.openai.com/v1/";
-            }
+            // Retrofit需要baseUrl，对于包含版本的情况，我们使用根路径作为baseUrl
+            // 实际URL会在拦截器中被替换
+            baseUrlForRetrofit = baseUrl;
+            logger.info("LLM baseUrl configured as: {}, contains version path: {}", baseUrl, containsVersionPath);
+            
+            // 配置Jackson忽略未知属性，解决第三方API返回额外字段导致的反序列化错误
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            
             Retrofit retrofit = new Retrofit.Builder()
-                    .baseUrl(finalBaseUrl)
+                    .baseUrl(baseUrlForRetrofit)
                     .client(client)
-                    .addConverterFactory(JacksonConverterFactory.create())
+                    .addConverterFactory(JacksonConverterFactory.create(objectMapper))
                     .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
                     .build();
             
@@ -327,11 +360,15 @@ public class LlmAnalysisService {
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(new ChatMessage(ChatMessageRole.USER.value(), prompt));
 
+            // 使用配置中的参数，没有设置则使用默认值
+            double temperature = config.getTemperature() != null ? config.getTemperature() : 0.7;
+            int maxTokens = config.getMaxTokens() != null ? config.getMaxTokens() : 1000;
+
             ChatCompletionRequest request = ChatCompletionRequest.builder()
                     .model(config.getModel())
                     .messages(messages)
-                    .temperature(0.7)
-                    .maxTokens(1000)
+                    .temperature(temperature)
+                    .maxTokens(maxTokens)
                     .build();
 
             String response = openAiService.createChatCompletion(request)
