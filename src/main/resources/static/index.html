@@ -131,6 +131,9 @@ async function loadAnalyses() {
 async function loadConfig() {
     const res = await fetch('/api/config');
     const config = await res.json();
+    // 设置默认值
+    const temperature = config.temperature != null ? config.temperature : 0.7;
+    const maxTokens = config.maxTokens != null ? config.maxTokens : 1000;
     // 这里不能使用模板字符串直接插入，会导致引号问题，需要动态设置textarea值
     let html = `
     <form onsubmit='saveConfig(event)'>
@@ -138,6 +141,8 @@ async function loadConfig() {
     <div class='form-group'><label>API Key</label><input type='password' name='apiKey' value="${escapeHtml(config.apiKey)}"></div>
     <div class='form-group'><label>模型名称</label><input type='text' name='model' value="${escapeHtml(config.model)}"></div>
     <div class='form-group'><label>超时时间(ms)</label><input type='number' name='timeout' value="${config.timeout}"></div>
+    <div class='form-group'><label>温度 (temperature)</label><input type='number' step='0.1' name='temperature' value="${temperature}"></div>
+    <div class='form-group'><label>最大token数 (max_tokens)</label><input type='number' name='maxTokens' value="${maxTokens}"></div>
     <div class='form-group'><label>提示词模板</label><textarea name='promptTemplate'></textarea></div>
     <button type='submit' class='btn btn-success'>保存配置</button>
     </form>`;

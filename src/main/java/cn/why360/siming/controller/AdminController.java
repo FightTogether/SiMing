@@ -176,6 +176,24 @@ public class AdminController {
                 newConfig.setPromptTemplate(cn.why360.siming.service.LlmAnalysisService.getDefaultPromptTemplate());
             }
 
+            if (updates.containsKey("temperature")) {
+                Number temperature = (Number) updates.get("temperature");
+                newConfig.setTemperature(temperature.doubleValue());
+            } else if (currentConfig != null && currentConfig.getTemperature() != null) {
+                newConfig.setTemperature(currentConfig.getTemperature());
+            } else {
+                newConfig.setTemperature(0.7);
+            }
+
+            if (updates.containsKey("maxTokens")) {
+                Number maxTokens = (Number) updates.get("maxTokens");
+                newConfig.setMaxTokens(maxTokens.intValue());
+            } else if (currentConfig != null && currentConfig.getMaxTokens() != null) {
+                newConfig.setMaxTokens(currentConfig.getMaxTokens());
+            } else {
+                newConfig.setMaxTokens(1000);
+            }
+
             // 保存到数据库并重新初始化LLM服务
             llmService.saveConfig(newConfig);
 
