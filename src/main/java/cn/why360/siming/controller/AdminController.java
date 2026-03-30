@@ -160,8 +160,14 @@ public class AdminController {
             }
 
             if (updates.containsKey("timeout")) {
-                Number timeout = (Number) updates.get("timeout");
-                newConfig.setTimeout(timeout.intValue());
+                Object timeoutObj = updates.get("timeout");
+                if (timeoutObj instanceof String) {
+                    newConfig.setTimeout(Integer.parseInt((String) timeoutObj));
+                } else if (timeoutObj instanceof Number) {
+                    newConfig.setTimeout(((Number) timeoutObj).intValue());
+                } else {
+                    newConfig.setTimeout(60000);
+                }
             } else if (currentConfig != null) {
                 newConfig.setTimeout(currentConfig.getTimeout());
             } else {
@@ -177,8 +183,14 @@ public class AdminController {
             }
 
             if (updates.containsKey("temperature")) {
-                Number temperature = (Number) updates.get("temperature");
-                newConfig.setTemperature(temperature.doubleValue());
+                Object tempObj = updates.get("temperature");
+                if (tempObj instanceof String) {
+                    newConfig.setTemperature(Double.parseDouble((String) tempObj));
+                } else if (tempObj instanceof Number) {
+                    newConfig.setTemperature(((Number) tempObj).doubleValue());
+                } else {
+                    newConfig.setTemperature(0.7);
+                }
             } else if (currentConfig != null && currentConfig.getTemperature() != null) {
                 newConfig.setTemperature(currentConfig.getTemperature());
             } else {
@@ -186,8 +198,14 @@ public class AdminController {
             }
 
             if (updates.containsKey("maxTokens")) {
-                Number maxTokens = (Number) updates.get("maxTokens");
-                newConfig.setMaxTokens(maxTokens.intValue());
+                Object maxObj = updates.get("maxTokens");
+                if (maxObj instanceof String) {
+                    newConfig.setMaxTokens(Integer.parseInt((String) maxObj));
+                } else if (maxObj instanceof Number) {
+                    newConfig.setMaxTokens(((Number) maxObj).intValue());
+                } else {
+                    newConfig.setMaxTokens(1000);
+                }
             } else if (currentConfig != null && currentConfig.getMaxTokens() != null) {
                 newConfig.setMaxTokens(currentConfig.getMaxTokens());
             } else {
