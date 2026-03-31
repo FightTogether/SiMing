@@ -41,7 +41,9 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
         .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; padding: 30px; border-radius: 8px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
         .modal-close { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; border: none; background: none; }
+        .chart-container { position: relative; height: 300px; margin: 20px 0; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class='container'>
@@ -103,13 +105,15 @@ function switchTab(tabName) {
 async function loadDisks() {
     const res = await fetch('/api/disks');
     const disks = await res.json();
-    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>操作</th></tr>`;
+    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>Cron表达式</th><th>操作</th></tr>`;
     disks.forEach(d => {
         const badge = d.monitored ? 'badge-success' : 'badge-warning';
         const text = d.monitored ? '监控中' : '未监控';
+        const cron = d.monitorCron || '(默认)';
         const sizeGB = (d.totalCapacity && !isNaN(d.totalCapacity)) ? (Number(d.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
+        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>${escapeHtml(cron)}</td><td>`;
         html += `<button class='btn' onclick='event.stopPropagation(); showDiskDetail(${d.id})'>查看详情</button> `;
+        html += `<button class='btn' onclick='event.stopPropagation(); editDiskCron(${d.id}, "${escapeHtml(cron.replace('(默认)', ''))}", ${d.monitored})'>编辑监控</button> `;
         html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
         html += `</td></tr>`;
     });
@@ -206,29 +210,173 @@ async function showDiskDetail(diskId) {
 
     let html = `<h2>硬盘详情: ${data.disk.brand} ${data.disk.model}</h2>
     <p><strong>设备:</strong> ${data.disk.devicePath}<br>
-    <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>
+    <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>`;
 
-    <h3>最近容量记录 (${data.capacity.length}条)</h3>
-    <table>
-    <tr><th>时间</th><th>已用 (GB)</th><th>可用 (GB)</th><th>使用率</th></tr>`;
+    // 容量信息 - 最新一条
+    if (data.capacity.length > 0) {
+        const latestCapacity = data.capacity[data.capacity.length - 1];
+        const usedGB = (latestCapacity.usedCapacity && !isNaN(latestCapacity.usedCapacity)) ? 
+            (Number(latestCapacity.usedCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
+        const freeGB = (latestCapacity.availableCapacity && !isNaN(latestCapacity.availableCapacity)) ? 
+            (Number(latestCapacity.availableCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
+        const usagePercent = latestCapacity.usagePercent ? Number(latestCapacity.usagePercent).toFixed(1) : '?';
+        const totalGB = (Number(usedGB) + Number(freeGB)).toFixed(2);
 
-    data.capacity.slice(-10).forEach(c => {
-        const usedGB = (c.usedCapacity && !isNaN(c.usedCapacity)) ? (Number(c.usedCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        const freeGB = (c.availableCapacity && !isNaN(c.availableCapacity)) ? (Number(c.availableCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        const totalGB = (data.disk.totalCapacity && !isNaN(data.disk.totalCapacity)) ? (Number(data.disk.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        let usage = '?';
-        if (usedGB !== '?' && totalGB !== '?') {
-            usage = ((usedGB / totalGB) * 100).toFixed(1);
-        }
-        html += `<tr><td>${c.timestamp}</td><td>${usedGB}</td><td>${freeGB}</td><td>${usage}%</td></tr>`;
-    });
-    html += `</table>`;
+        html += `<h3>容量信息</h3>
+        <table>
+            <tr><th>总容量</th><td>${totalGB} GB</td></tr>
+            <tr><th>已用容量</th><td>${usedGB} GB</td></tr>
+            <tr><th>可用容量</th><td>${freeGB} GB</td></tr>
+            <tr><th>使用率</th><td>${usagePercent}%</td></tr>
+            <tr><th>记录时间</th><td>${latestCapacity.recordTime ? latestCapacity.recordTime.replace('T', ' ') : '-'}</td></tr>
+        </table>`;
+    }
 
+    // SMART 属性中文翻译表
+    const smartCnMap = {
+        'raw_read_error_rate': '原始读取错误率',
+        'reallocated_sector_ct': '重映射扇区计数',
+        'spin_up_time': '主轴起旋时间',
+        'start_stop_count': '启动/停止计数',
+        'reallocated_event_count': '重映射事件计数',
+        'seek_error_rate': '寻道错误率',
+        'seek_time_performance': '寻道时间性能',
+        'power_on_hours': '通电小时数',
+        'spin_retry_count': '起旋重试计数',
+        'recalibration_retries': '重新校准重试',
+        'power_cycle_count': '通电周期计数',
+        'soft_read_error_rate': '软读取错误率',
+        'total_lbas_read': '累计读取扇区数',
+        'total_lbas_written': '累计写入扇区数',
+        'read_error_rate': '读取错误率',
+        'media_wearout_indicator': '介质磨损指示器',
+        'wear_leveling_count': '损耗均衡计数',
+        'used_rsvd_block_count': '已用保留块计数',
+        'unused_rsvd_block_count': '未用保留块计数',
+        'program_fail_count': '编程失败计数',
+        'erase_fail_count': '擦除失败计数',
+        'ufas_crc_error_count': 'UFA CRC错误计数',
+        'end_to_end_error': '端到端错误',
+        'temperature_celsius': '温度',
+        'reallocated_sector_count': '重映射扇区计数',
+        'current_pending_sector': '当前待映射扇区',
+        'offline_uncorrectable': '脱机不可纠正扇区',
+        'udma_crc_error_count': 'UDMA CRC错误计数',
+        'multi_zone_error_rate': '多区域错误率',
+        'data_address_marks': '数据地址标记',
+        'run_out_cancel': '运行取消',
+        'g_sense_error_rate': 'G传感器错误率',
+        'power_off_retract': '断电磁头拉回',
+        'load_cycle_count': '磁头加载循环计数',
+        'temperature_difference': '温差',
+        'hardware_ecc_recovered': '硬件ECC纠正',
+        'reallocation_requests': '重映射请求',
+        'current_pending_sectors': '当前待映射扇区',
+        'off_line_uncorrectable': '脱机不可纠正扇区',
+        'uncorrectable_error_count': '不可纠正错误计数',
+        'command_timeout': '命令超时',
+        'high_fly_writes': '高飞写入',
+        'thermal_aspersion': '热散布',
+        'fly_height': '飞行高度',
+        'spin_heat': '旋转发热',
+        'life_left': '剩余寿命',
+        'media_firmware_version': '介质固件版本',
+        'sata_downshift_error_count': 'SATA降速错误计数',
+        'endurance_remaining': '剩余耐久度',
+        'number_of_host_writes': '主机写入次数',
+        'timer_host_reads': '主机读取计时',
+        'available_reserved': '可用预留块',
+        'percentage_used': '已用百分比',
+        'power_loss_cycle_count': '掉电周期计数',
+        'read_error_skipped': '跳过读取错误',
+        'llc_lifetime_written_uncorrectable': 'LLC寿命写入不可纠正',
+        'thunderbolt_crc_errors': 'Thunderbolt CRC错误',
+        'percent_life_remaining': '剩余寿命百分比',
+        'media_errors': '介质错误',
+        'nvm_err_volatile': 'NVM易失性错误',
+        'nvm_err_non_volatile': 'NVM非易失性错误',
+        'program_fail_count_chip': '芯片编程失败计数',
+        'erase_fail_count_chip': '芯片擦除失败计数',
+        'thermal_throttle': '热节流',
+        'retired_block_count': '退役块计数',
+        'program_error_count': '编程错误计数',
+        'raw_read_error_rate_nvme': '原始读取错误率(NVMe)',
+        'total_host_reads': '主机总读取',
+        'total_host_writes': '主机总写入',
+        'host_read_commands': '主机读取命令数',
+        'host_write_commands': '主机写入命令数',
+        'power_on_hours_nvme': '通电小时数(NVMe)',
+        'temperature': '温度',
+        'warning_temp_time': '警告温度时间',
+        'available_spare': '可用备用块',
+        'available_spare_threshold': '可用备用块阈值',
+        'num_err_log_entries': '错误日志条目数',
+        'data_units_read': '数据单元读取',
+        'data_units_written': '数据单元写入',
+        'controller_busy_time': '控制器繁忙时间',
+        'power_cycles': '通电周期',
+        'unsafe_shutdowns': '不安全关机次数',
+        'critical_comp_time': '关键复合时间'
+    };
+
+        // 显示所有SMART属性完整列表，带中文翻译
     if (data.smart.length > 0) {
-        html += `<h3>最新SMART信息</h3><table><tr><th>属性</th><th>当前值</th><th>阈值</th><th>原始值</th></tr>`;
         const latest = data.smart[data.smart.length - 1].attributes;
+        html += `<h3>SMART 属性列表</h3>
+        <table>
+            <tr><th>ID</th><th>属性名称</th><th>当前值</th><th>最差值</th><th>阈值</th><th>原始值</th><th>状态</th></tr>`;
         latest.forEach(a => {
-            html += `<tr><td>${a.attributeName}</td><td>${a.currentValue}</td><td>${a.threshold}</td><td>${a.rawValue}</td></tr>`;
+            let statusBadge;
+            if (a.failed === null || a.failed === undefined) {
+                statusBadge = '<span class="badge">None</span>';
+            } else if (a.failed) {
+                statusBadge = '<span class="badge badge-warning">失败</span>';
+            } else {
+                statusBadge = '<span class="badge badge-success">正常</span>';
+            }
+            let cnName = '';
+            const key = a.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+            for (const mapKey in smartCnMap) {
+                if (key.includes(mapKey) || mapKey.includes(key)) {
+                    cnName = smartCnMap[mapKey];
+                    break;
+                }
+            }
+            let nameCell = `${a.attributeName}`;
+            if (cnName) {
+                nameCell = `${a.attributeName}<br><small>${cnName}</small>`;
+            }
+
+            // 特殊格式化：数据单元读写转换为TB，时间转换为小时
+            let rawValue = a.rawValue;
+            if (a.rawValue !== null && a.rawValue !== '') {
+                const rawNum = parseInt(a.rawValue);
+                if (!isNaN(rawNum)) {
+                    // data_units_* 每个单位通常是 512KB * 1000 = 512,000,000 bytes ≈ 0.512 GB
+                    // 所以 TB = rawNum * 0.512 / 1024 = rawNum / 2000 近似
+                    if (key.includes('data_units_')) {
+                        const tb = (rawNum * 0.512 / 1024).toFixed(2);
+                        rawValue = `${a.rawValue} (${tb} TB)`;
+                    } else if (key.includes('controller_busy_time') || key.includes('critical_comp_time') || key.includes('warning_temp_time')) {
+                        // 这些通常是分钟，转换为小时
+                        const hours = (rawNum / 60).toFixed(2);
+                        rawValue = `${a.rawValue} (${hours} 小时)`;
+                    } else if (key.includes('power_on_hours') || (key.includes('power_cycles') && a.rawValue.length > 4)) {
+                        // power_on_hours 已经是小时，直接添加单位
+                        rawValue = `${a.rawValue} 小时`;
+                    }
+                }
+            }
+
+            html += `<tr>
+                <td>${a.attributeId}</td>
+                <td>${nameCell}</td>
+                <td>${a.currentValue}</td>
+                <td>${a.worstValue}</td>
+                <td>${a.threshold}</td>
+                <td>${rawValue}</td>
+                <td>${statusBadge}</td>
+            </tr>`;
         });
         html += `</table>`;
     }
@@ -247,6 +395,50 @@ async function showAnalysisResult(analysisId) {
         <div class='analysis-result'>${escapeHtml(analysis.result)}</div>
     `;
     showModal('分析结果', html);
+}
+
+function editDiskCron(diskId, currentCron, monitored) {
+    // HTML解码
+    currentCron = currentCron.replace(/"/g, '"').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+    const html = `
+        <h2>编辑监控配置</h2>
+        <form onsubmit='saveDiskCron(event, ${diskId})'>
+        <div class='form-group'>
+            <label>启用监控</label>
+            <select name='monitored'>
+                <option value='true' ${monitored ? 'selected' : ''}>是</option>
+                <option value='false' ${!monitored ? 'selected' : ''}>否</option>
+            </select>
+        </div>
+        <div class='form-group'>
+            <label>Cron表达式</label>
+            <input type='text' name='monitorCron' value='${escapeHtml(currentCron)}' placeholder='留空使用默认值: 0 0 2 * * ?'>
+            <small style='color: #666;'>默认值: 每天凌晨2点执行一次。示例: 0 0 */6 * * ? = 每6小时一次</small>
+        </div>
+        <button type='submit' class='btn btn-success'>保存</button>
+        <button type='button' class='btn' onclick='closeModal()'>取消</button>
+        </form>
+    `;
+    showModal('编辑监控配置', html);
+}
+
+async function saveDiskCron(e, diskId) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    const res = await fetch(`/api/disk/${diskId}/update`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+        alert('配置已保存，调度器已重新加载');
+        closeModal();
+        loadDisks();
+    } else {
+        alert('保存失败: ' + result.error);
+    }
 }
 
 function showModal(title, content) {

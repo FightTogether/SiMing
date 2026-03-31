@@ -1,0 +1,115 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      3
+    ],
+    "svn_revision": "5338",
+    "platform_info": "x86_64-linux-6.8.12-20-pve",
+    "build_info": "(local build)",
+    "argv": [
+      "smartctl",
+      "-j",
+      "-a",
+      "/dev/nvme0n1"
+    ],
+    "exit_status": 0
+  },
+  "local_time": {
+    "time_t": 1774955239,
+    "asctime": "Tue Mar 31 19:07:19 2026 CST"
+  },
+  "device": {
+    "name": "/dev/nvme0n1",
+    "info_name": "/dev/nvme0n1",
+    "type": "nvme",
+    "protocol": "NVMe"
+  },
+  "model_name": "ORICO",
+  "serial_number": "2DA9QH423MBVJLTTR6I4",
+  "firmware_version": "SN23387",
+  "nvme_pci_vendor": {
+    "id": 7755,
+    "subsystem_id": 7755
+  },
+  "nvme_ieee_oui_identifier": 819925,
+  "nvme_total_capacity": 1024209543168,
+  "nvme_unallocated_capacity": 0,
+  "nvme_controller_id": 0,
+  "nvme_version": {
+    "string": "2.0",
+    "value": 131072
+  },
+  "nvme_number_of_namespaces": 1,
+  "nvme_namespaces": [
+    {
+      "id": 1,
+      "size": {
+        "blocks": 2000409264,
+        "bytes": 1024209543168
+      },
+      "capacity": {
+        "blocks": 2000409264,
+        "bytes": 1024209543168
+      },
+      "utilization": {
+        "blocks": 2000409264,
+        "bytes": 1024209543168
+      },
+      "formatted_lba_size": 512,
+      "eui64": {
+        "oui": 819925,
+        "ext_id": 1540
+      }
+    }
+  ],
+  "user_capacity": {
+    "blocks": 2000409264,
+    "bytes": 1024209543168
+  },
+  "logical_block_size": 512,
+  "smart_support": {
+    "available": true,
+    "enabled": true
+  },
+  "smart_status": {
+    "passed": true,
+    "nvme": {
+      "value": 0
+    }
+  },
+  "nvme_smart_health_information_log": {
+    "critical_warning": 0,
+    "temperature": 60,
+    "available_spare": 100,
+    "available_spare_threshold": 1,
+    "percentage_used": 7,
+    "data_units_read": 28575917,
+    "data_units_written": 46744948,
+    "host_reads": 284453616,
+    "host_writes": 1338818023,
+    "controller_busy_time": 2128,
+    "power_cycles": 77,
+    "power_on_hours": 9420,
+    "unsafe_shutdowns": 36,
+    "media_errors": 0,
+    "num_err_log_entries": 0,
+    "warning_temp_time": 0,
+    "critical_comp_time": 0,
+    "temperature_sensors": [
+      60,
+      34
+    ]
+  },
+  "temperature": {
+    "current": 60
+  },
+  "power_cycle_count": 77,
+  "power_on_time": {
+    "hours": 9420
+  }
+}

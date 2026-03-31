@@ -1,0 +1,14 @@
+Filesystem                  1K-blocks       Used Available Use% Mounted on
+udev                         24294268          0  24294268   0% /dev
+tmpfs                         4865616      15744   4849872   1% /run
+/dev/mapper/pve-root         57225328   21953392  32332648  41% /
+tmpfs                        24328064      46800  24281264   1% /dev/shm
+tmpfs                            5120          0      5120   0% /run/lock
+efivarfs                          150         86        60  60% /sys/firmware/efi/efivars
+/dev/nvme0n1p1              983378656  684497584 248854512  74% /mnt/pve/nvme1t
+/dev/sdd                   1921694920 1357185124 466819328  75% /mnt/sda
+/dev/fuse                      131072         36    131036   1% /etc/pve
+overlay                      57225328   21953392  32332648  41% /var/lib/docker/overlay2/da4ae74419ac5d31125730ce91729b659d0aa626d56096ba8a5e6b142b0ef1f2/merged
+overlay                      57225328   21953392  32332648  41% /var/lib/docker/overlay2/f9781d716edcd2aa9c5d37bee5066552e80c2189d21debe16e470d56336c1742/merged
+//192.168.99.13/PVE-Backup  941335792   44874616 896461176   5% /mnt/pve/OECT-SMB
+tmpfs                         4865612          0   4865612   0% /run/user/0

@@ -1,16 +1,18 @@
 package cn.why360.siming.config;
 
-import cn.why360.siming.dao.AnalysisResultDAO;
 import cn.why360.siming.dao.CapacityRecordDAO;
 import cn.why360.siming.dao.DiskDAO;
-import cn.why360.siming.dao.LlmConfigDAO;
 import cn.why360.siming.dao.SmartRecordDAO;
+import cn.why360.siming.dao.AnalysisResultDAO;
+import cn.why360.siming.dao.LlmConfigDAO;
 import cn.why360.siming.database.DatabaseManager;
+import cn.why360.siming.scheduler.SchedulerManager;
 import cn.why360.siming.service.CapacityMonitorService;
 import cn.why360.siming.service.DiskDiscoveryService;
 import cn.why360.siming.service.LlmAnalysisService;
 import cn.why360.siming.service.SmartReaderService;
 import com.zaxxer.hikari.HikariDataSource;
+import org.quartz.SchedulerException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -81,5 +83,13 @@ public class SpringConfig {
     public LlmAnalysisService llmAnalysisService(LlmConfigDAO llmConfigDAO, AnalysisResultDAO analysisResultDAO,
                                                CapacityRecordDAO capacityRecordDAO, SmartRecordDAO smartRecordDAO) {
         return new LlmAnalysisService(llmConfigDAO, analysisResultDAO, capacityRecordDAO, smartRecordDAO);
+    }
+
+    @Bean
+    public SchedulerManager schedulerManager(SimingConfig config, DiskDAO diskDAO,
+                                            CapacityMonitorService capacityService,
+                                            SmartReaderService smartReaderService,
+                                            SmartRecordDAO smartRecordDAO) throws SchedulerException {
+        return new SchedulerManager(config.getMonitor(), diskDAO, capacityService, smartReaderService, smartRecordDAO);
     }
 }

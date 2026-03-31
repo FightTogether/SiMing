@@ -9,3 +9,7 @@ SERVER_URL="http://localhost:8080"
 
 # 数据存储根目录，采集到的数据会保存在这里（默认是 ./data）
 # DATA_ROOT="./data"
+
+# 守护进程模式采集间隔（秒），默认 86400 = 每天采集一次
+# 只有在使用 ./disk-monitor.sh start 启动守护进程时生效
+# COLLECT_INTERVAL=86400

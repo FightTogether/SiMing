@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 public class SimingConfig {
     private Database database = new Database();
     private Monitor monitor = new Monitor();
+    private RawDataStorage rawData = new RawDataStorage();
     private boolean localMode = true;
 
     @Data
@@ -26,5 +27,10 @@ public class SimingConfig {
     public static class Monitor {
         private String defaultCron = "0 0 2 * * ?";
         private boolean autoStart = true;
+    }
+
+    @Data
+    public static class RawDataStorage {
+        private String basePath = "./data/raw";
     }
 }

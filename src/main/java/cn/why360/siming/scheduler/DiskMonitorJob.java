@@ -55,8 +55,8 @@ public class DiskMonitorJob implements Job {
             try {
                 logger.info("Monitoring disk: {}", disk.getDevicePath());
 
-                // 容量监控
-                capacityService.checkAndSaveAllMounts(disk.getId());
+                // 容量监控 - 只统计当前硬盘上的挂载点
+                capacityService.checkAndSaveAllMounts(disk.getId(), disk.getDevicePath());
                 logger.debug("Capacity check completed for {}", disk.getDevicePath());
 
                 // SMART监控
