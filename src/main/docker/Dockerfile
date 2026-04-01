@@ -3,11 +3,11 @@ FROM maven:3.9-eclipse-temurin-11 AS builder
 WORKDIR /app
 
 # 复制pom文件并下载依赖
-COPY pom.xml .
+COPY ../../../pom.xml .
 RUN mvn dependency:go-offline -B
 
 # 复制源代码并构建
-COPY . .
+COPY ../../.. .
 RUN mvn package -DskipTests
 
 # 最终运行镜像
