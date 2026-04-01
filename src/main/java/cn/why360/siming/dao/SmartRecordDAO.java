@@ -48,7 +48,7 @@ public class SmartRecordDAO {
         return allRecords.stream()
                 .filter(record -> !record.getRecordTime().isBefore(startTime) && !record.getRecordTime().isAfter(endTime))
                 .sorted(Comparator.comparing(SmartRecord::getAttributeId).thenComparing(SmartRecord::getRecordTime))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     /**
@@ -66,7 +66,7 @@ public class SmartRecordDAO {
         }
         return latestMap.values().stream()
                 .sorted(Comparator.comparing(SmartRecord::getAttributeId))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     /**
@@ -87,7 +87,7 @@ public class SmartRecordDAO {
         }
         return latestMap.values().stream()
                 .sorted(Comparator.comparing(SmartRecord::getAttributeId))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     /**

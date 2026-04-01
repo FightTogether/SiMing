@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 容量监控记录数据访问对象 - MyBatis实现
@@ -39,7 +40,7 @@ public class CapacityRecordDAO {
         return allRecords.stream()
                 .filter(record -> !record.getRecordTime().isBefore(startTime) && !record.getRecordTime().isAfter(endTime))
                 .sorted((a, b) -> a.getRecordTime().compareTo(b.getRecordTime()))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     /**
