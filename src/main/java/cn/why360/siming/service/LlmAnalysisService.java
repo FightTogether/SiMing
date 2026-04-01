@@ -580,59 +580,27 @@ public class LlmAnalysisService {
             return "No SMART data available";
         }
 
-        // 只关注关键属性
-        List<String> importantAttributes = List.of(
-                "Reallocated_Sector_Ct",
-                "Current_Pending_Sector",
-                "Offline_Uncorrectable",
-                "Reallocated_Event_Count",
-                "Temperature_Celsius",
-                "Airflow_Temperature_Cel",
-                "Power_On_Hours",
-                "Power_Cycle_Count",
-                "Media_Errors",
-                "Total_LBAs_Written",
-                "Data_Units_Written",
-                "Data_Units_Read",
-                "Percentage_Used",
-                "Host_Writes",
-                "Host_Reads",
-                "Host_Write_Commands",
-                "Host_Read_Commands",
-                "Available_Spare",
-                "Percent_Life_Remaining",
-                "Endurance_Remaining"
-        );
-
-        // 收集所有出现过的关键属性名称
+        // 收集所有出现过的属性名称（包含所有属性，不过滤）
         java.util.Set<String> allAttrNames = new java.util.HashSet<>();
         for (SmartRecord r : now) {
             String name = r.getAttributeName();
-            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
-                allAttrNames.add(name);
-            }
+            allAttrNames.add(name);
         }
         for (SmartRecord r : d7) {
             String name = r.getAttributeName();
-            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
-                allAttrNames.add(name);
-            }
+            allAttrNames.add(name);
         }
         for (SmartRecord r : d30) {
             String name = r.getAttributeName();
-            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
-                allAttrNames.add(name);
-            }
+            allAttrNames.add(name);
         }
         for (SmartRecord r : d365) {
             String name = r.getAttributeName();
-            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
-                allAttrNames.add(name);
-            }
+            allAttrNames.add(name);
         }
 
         if (allAttrNames.isEmpty()) {
-            return "No important SMART attributes found";
+            return "No SMART attributes found";
         }
 
         StringJoiner sj = new StringJoiner("\n");
@@ -772,47 +740,22 @@ public class LlmAnalysisService {
     }
 
     /**
-     * 格式化SMART数据，提供昨天、上周、上个月三份历史数据，让大模型分析趋势
+     * 格式化SMART数据，提供一个月前、一周前、昨天、当前四份历史数据，让大模型分析趋势
      */
     private String formatSmartData(List<SmartRecord> records) {
         if (records.isEmpty()) {
             return "No SMART data available for this period";
         }
 
-        // 只关注关键属性
-        List<String> importantAttributes = List.of(
-                "Reallocated_Sector_Ct",
-                "Current_Pending_Sector",
-                "Offline_Uncorrectable",
-                "Reallocated_Event_Count",
-                "Temperature_Celsius",
-                "Airflow_Temperature_Cel",
-                "Power_On_Hours",
-                "Power_Cycle_Count",
-                "Media_Errors",
-                "Total_LBAs_Written",
-                "Data_Units_Written",
-                "Data_Units_Read",
-                "Percentage_Used",
-                "Host_Writes",
-                "Host_Reads",
-                "Host_Write_Commands",
-                "Host_Read_Commands"
-        );
-
-        // 先按属性名称分组，每个属性下有多个时间点的记录
+        // 先按属性名称分组，每个属性下有多个时间点的记录（包含所有属性，不过滤）
         Map<String, List<SmartRecord>> grouped = new HashMap<>();
         for (SmartRecord record : records) {
             String name = record.getAttributeName();
-            boolean isImportant = importantAttributes.stream()
-                    .anyMatch(imp -> name.contains(imp) || imp.contains(name));
-            if (isImportant) {
-                grouped.computeIfAbsent(name, k -> new ArrayList<>()).add(record);
-            }
+            grouped.computeIfAbsent(name, k -> new ArrayList<>()).add(record);
         }
 
         if (grouped.isEmpty()) {
-            return "No important SMART attributes found";
+            return "No SMART attributes found";
         }
 
         LocalDateTime now = LocalDateTime.now();
