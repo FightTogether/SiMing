@@ -15,9 +15,6 @@ FROM eclipse-temurin:11-jre
 
 WORKDIR /app
 
-# 安装smartmontools用于获取SMART信息
-RUN apk add --no-cache smartmontools && \
-    rm -rf /var/cache/apk/*
 
 # 复制构建好的jar
 COPY --from=builder /app/target/siming-1.0-SNAPSHOT.jar app.jar
@@ -29,7 +26,6 @@ VOLUME /app/data
 VOLUME /app/config
 
 # 设置环境变量
-ENV OPENAI_API_KEY=""
 ENV SIMING_CONFIG="/app/config/application.yml"
 
 # 入口点
