@@ -58,7 +58,6 @@
         <div class='tab' onclick='switchTab("config")'>大模型配置</div>
     </div>
 
-    <!-- 硬盘监控标签页 -->
     <div id='disks' class='tab-content active'>
         <div class='card'>
             <h2>监控硬盘列表</h2>
@@ -66,7 +65,6 @@
         </div>
     </div>
 
-    <!-- 分析历史标签页 -->
     <div id='analyses' class='tab-content'>
         <div class='card'>
             <h2>AI分析历史</h2>
@@ -74,7 +72,6 @@
         </div>
     </div>
 
-    <!-- 配置标签页 -->
     <div id='config' class='tab-content'>
         <div class='card'>
             <h2>大模型配置</h2>
@@ -82,7 +79,6 @@
         </div>
     </div>
 
-    <!-- 详情弹窗 -->
     <div id='detail-modal' class='modal'>
         <div class='modal-content'>
             <button class='modal-close' onclick='closeModal()'>&times;</button>
@@ -135,10 +131,8 @@ async function loadAnalyses() {
 async function loadConfig() {
     const res = await fetch('/api/config');
     const config = await res.json();
-    // 设置默认值
     const temperature = config.temperature != null ? config.temperature : 0.7;
     const maxTokens = config.maxTokens != null ? config.maxTokens : 1000;
-    // 这里不能使用模板字符串直接插入，会导致引号问题，需要动态设置textarea值
     let html = `
     <form onsubmit='saveConfig(event)'>
     <div class='form-group'><label>API地址</label><input type='text' name='apiBaseUrl' value="${escapeHtml(config.apiBaseUrl)}"></div>
@@ -151,7 +145,6 @@ async function loadConfig() {
     <button type='submit' class='btn btn-success'>保存配置</button>
     </form>`;
     document.getElementById('config-form').innerHTML = html;
-    // 动态设置textarea值避免转义问题
     document.querySelector('textarea[name="promptTemplate"]').value = config.promptTemplate || '';
 }
 
@@ -174,10 +167,8 @@ async function saveConfig(e) {
 }
 
 function triggerAnalysis(diskId) {
-    const days = prompt('输入分析最近多少天的数据:', 30);
-    if (days) {
-        analyzeDisk(diskId, parseInt(days));
-    }
+    // 默认分析最近30天的数据，不需要用户输入
+    analyzeDisk(diskId, 30);
 }
 
 async function analyzeDisk(diskId, days) {
@@ -212,7 +203,6 @@ async function showDiskDetail(diskId) {
     <p><strong>设备:</strong> ${data.disk.devicePath}<br>
     <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>`;
 
-    // 容量信息 - 最新一条
     if (data.capacity.length > 0) {
         const latestCapacity = data.capacity[data.capacity.length - 1];
         const usedGB = (latestCapacity.usedCapacity && !isNaN(latestCapacity.usedCapacity)) ? 
@@ -232,7 +222,45 @@ async function showDiskDetail(diskId) {
         </table>`;
     }
 
-    // SMART 属性中文翻译表
+    function findAttributeByKey(attributes, searchKey) {
+        for (const attr of attributes) {
+            const key = attr.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+            if (key.includes(searchKey) || searchKey.includes(key)) {
+                return attr;
+            }
+        }
+        return null;
+    }
+
+    function formatAttributeValue(attr) {
+        const key = attr.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        let rawValue = attr.rawValue;
+        
+        if (attr.rawValue !== null && attr.rawValue !== '') {
+            const rawNum = parseInt(attr.rawValue);
+            if (!isNaN(rawNum)) {
+                if (key.includes('data_units_')) {
+                    // NVMe: data_units_read/data_units_written 每个单位 = 1000个扇区 = 512KB
+                    const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
+                    rawValue = `${tb} TB`;
+                } else if (key.includes('total_host_reads') || key.includes('total_host_writes') || key.includes('total_lbas_read') || key.includes('total_lbas_written')) {
+                    // 每个单位 = 1个扇区 = 512字节
+                    const tb = (rawNum * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
+                    rawValue = `${tb} TB`;
+                } else if (key.includes('host_read_commands') || key.includes('host_write_commands') || key.includes('host_reads') || key.includes('host_writes')) {
+                    const tenThousand = Math.round(rawNum / 10000);
+                    rawValue = `${rawNum} (${tenThousand} 万次)`;
+                } else if (key.includes('controller_busy_time') || key.includes('critical_comp_time') || key.includes('warning_temp_time')) {
+                    const hours = (rawNum / 60).toFixed(2);
+                    rawValue = `${attr.rawValue} (${hours} 小时)`;
+                } else if (key.includes('power_on_hours') && (attr.rawValue.length > 4 || rawNum > 100)) {
+                    rawValue = `${attr.rawValue} 小时`;
+                }
+            }
+        }
+        return rawValue;
+    }
+
     const smartCnMap = {
         'raw_read_error_rate': '原始读取错误率',
         'reallocated_sector_ct': '重映射扇区计数',
@@ -319,21 +347,134 @@ async function showDiskDetail(diskId) {
         'critical_comp_time': '关键复合时间'
     };
 
-        // 显示所有SMART属性完整列表，带中文翻译
     if (data.smart.length > 0) {
         const latest = data.smart[data.smart.length - 1].attributes;
-        html += `<h3>SMART 属性列表</h3>
-        <table>
-            <tr><th>ID</th><th>属性名称</th><th>当前值</th><th>最差值</th><th>阈值</th><th>原始值</th><th>状态</th></tr>`;
+        
+        const isSSD = latest.some(a => {
+            const key = a.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+            return key.includes('data_units') || key.includes('percentage_used') || key.includes('endurance');
+        });
+        
+        if (isSSD) {
+            html += `<h3>固态硬盘关键信息</h3>`;
+            html += `<table><tr><th>指标</th><th>值</th></tr>`;
+            
+            let ssdKeys = [
+                ['data_units_read', 'data_units_read 读取数据量', '每单位 = 1000 个扇区 (512KB)'],
+                ['data_units_written', 'data_units_written 写入数据量', '每单位 = 1000 个扇区 (512KB)'],
+                ['percentage_used', 'percentage_used 已用寿命百分比', null],
+                ['host_reads', 'host_reads 主机读取命令数', null],
+                ['host_writes', 'host_writes 主机写入命令数', null],
+                ['host_read_commands', 'host_read_commands 主机读取命令数', null],
+                ['host_write_commands', 'host_write_commands 主机写入命令数', null],
+                ['power_on_hours', 'power_on_hours 通电时长', '单位：小时'],
+                ['power_cycles', 'power_cycle_count 通电次数', null],
+                ['power_cycle_count', 'power_cycle_count 通电次数', null],
+                ['unsafe_shutdowns', 'unsafe_shutdowns 不安全关机次数', null],
+                ['critical_warning', 'critical_warning 严重告警次数', null],
+                ['temperature', 'temperature 温度', '<80度绿色，其他红色']
+            ];
+            
+            ssdKeys.forEach(([searchKey, displayName, description]) => {
+                const attr = findAttributeByKey(latest, searchKey);
+                if (attr) {
+                    let displayValue = formatAttributeValue(attr);
+                    let badgeClass = '';
+                    
+                    if (searchKey === 'temperature' && attr.rawValue !== null) {
+                        const temp = parseInt(attr.rawValue);
+                        badgeClass = temp < 80 ? 'badge-success' : 'badge-warning';
+                        displayValue = `<span class="badge ${badgeClass}">${displayValue}</span>`;
+                    }
+                    
+                    if (searchKey === 'critical_warning' && attr.rawValue !== null) {
+                        const val = parseInt(attr.rawValue);
+                        badgeClass = val === 0 ? 'badge-success' : 'badge-warning';
+                        displayValue = `<span class="badge ${badgeClass}">${val}</span>`;
+                    }
+                    
+                    if (searchKey.includes('percentage_used') && attr.rawValue !== null) {
+                        const val = parseInt(attr.rawValue);
+                        badgeClass = val < 80 ? 'badge-success' : 'badge-warning';
+                        displayValue = `<span class="badge ${badgeClass}">${val}%</span>`;
+                    }
+                    
+                    const desc = description || '';
+                    if (desc) {
+                        html += `<tr title="${escapeHtml(desc)}"><td>${displayName}</td><td>${displayValue}</td></tr>`;
+                    } else {
+                        html += `<tr><td>${displayName}</td><td>${displayValue}</td></tr>`;
+                    }
+                }
+            });
+            
+            html += `</table>`;
+            
+        } else {
+            html += `<h3>机械硬盘关键信息</h3>`;
+            html += `<table><tr><th>指标</th><th>值</th></tr>`;
+            
+            const hddKeys = [
+                ['total_host_reads', 'Total Host Reads 读取数据量', '每单位 = 1 个扇区 (512字节)'],
+                ['total_host_writes', 'Total Host Writes 写入数据量', '每单位 = 1 个扇区 (512字节)'],
+                ['total_lbas_read', 'Total LBAS Reads 读取数据量', '每单位 = 1 个扇区 (512字节)'],
+                ['total_lbas_written', 'Total LBAS Writes 写入数据量', '每单位 = 1 个扇区 (512字节)'],
+                ['wear_leveling_count', 'Wear Leveling Count', null],
+                ['load_cycle_count', 'Load Cycle Count 磁头加载/卸载次数', '看厂商阈值'],
+                ['power_on_hours', 'power_on_hours 通电时长', '单位：小时'],
+                ['power_cycles', 'power_cycle_count 通电次数', null],
+                ['power_cycle_count', 'power_cycle_count 通电次数', null],
+                ['unsafe_shutdowns', 'unsafe_shutdowns 不安全关机次数', null],
+                ['reallocated_sector_count', 'Reallocated Sector Count 重映射扇区数', '坏道，>0 即警告'],
+                ['current_pending_sector', 'Current Pending Sector 待映射的不稳定扇区', '>0 警告'],
+                ['current_pending_sectors', 'Current Pending Sector 待映射的不稳定扇区', '>0 警告'],
+                ['offline_uncorrectable', 'Offline Uncorrectable 离线不可修复扇区', '>0 危险'],
+                ['read_error_rate', 'Read Error Rate 读取错误率', '值越低越差'],
+                ['seek_error_rate', 'Seek Error Rate 寻道错误率', '值越低越差'],
+                ['temperature_celsius', 'temperature 温度', '°C'],
+                ['temperature', 'temperature 温度', '°C']
+            ];
+            
+            hddKeys.forEach(([searchKey, displayName, description]) => {
+                const attr = findAttributeByKey(latest, searchKey);
+                if (attr) {
+                    let displayValue = formatAttributeValue(attr);
+                    
+                    if (['reallocated_sector_count', 'current_pending_sector', 'current_pending_sectors', 'offline_uncorrectable'].includes(searchKey) && attr.rawValue !== null) {
+                        const val = parseInt(attr.rawValue);
+                        if (val > 0) {
+                            displayValue = `<span class="badge badge-warning">${displayValue}</span>`;
+                        }
+                    }
+                    
+                    if (searchKey === 'temperature' && attr.rawValue !== null) {
+                        const temp = parseInt(attr.rawValue);
+                        const badgeClass = temp < 80 ? 'badge-success' : 'badge-warning';
+                        displayValue = `<span class="badge ${badgeClass}">${displayValue}</span>`;
+                    }
+                    
+                    const desc = description || '';
+                    if (desc) {
+                        html += `<tr title="${escapeHtml(desc)}"><td>${displayName}</td><td>${displayValue}</td></tr>`;
+                    } else {
+                        html += `<tr><td>${displayName}</td><td>${displayValue}</td></tr>`;
+                    }
+                }
+            });
+            
+            html += `</table>`;
+        }
+        
+        // 完整属性列表折叠
+        html += `
+        <div style="margin-top: 20px;">
+            <button class="btn" onclick="toggleFullAttributes()">显示完整SMART属性列表</button>
+            <div id="full-attributes" style="display: none; margin-top: 15px;">
+                <h3>完整SMART 属性列表</h3>
+                <table>
+                    <tr><th>ID</th><th>属性名称</th><th>当前值</th><th>最差值</th><th>阈值</th><th>原始值</th></tr>`;
+        
         latest.forEach(a => {
-            let statusBadge;
-            if (a.failed === null || a.failed === undefined) {
-                statusBadge = '<span class="badge">None</span>';
-            } else if (a.failed) {
-                statusBadge = '<span class="badge badge-warning">失败</span>';
-            } else {
-                statusBadge = '<span class="badge badge-success">正常</span>';
-            }
             let cnName = '';
             const key = a.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
             for (const mapKey in smartCnMap) {
@@ -347,22 +488,25 @@ async function showDiskDetail(diskId) {
                 nameCell = `${a.attributeName}<br><small>${cnName}</small>`;
             }
 
-            // 特殊格式化：数据单元读写转换为TB，时间转换为小时
             let rawValue = a.rawValue;
             if (a.rawValue !== null && a.rawValue !== '') {
                 const rawNum = parseInt(a.rawValue);
                 if (!isNaN(rawNum)) {
-                    // data_units_* 每个单位通常是 512KB * 1000 = 512,000,000 bytes ≈ 0.512 GB
-                    // 所以 TB = rawNum * 0.512 / 1024 = rawNum / 2000 近似
                     if (key.includes('data_units_')) {
-                        const tb = (rawNum * 0.512 / 1024).toFixed(2);
-                        rawValue = `${a.rawValue} (${tb} TB)`;
+                        // NVMe: data_units_read/data_units_written 每个单位 = 1000个扇区 = 512KB
+                        const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
+                        rawValue = `${tb} TB`;
+                    } else if (key.includes('host_read_commands') || key.includes('host_write_commands')) {
+                        const tenThousand = Math.round(rawNum / 10000);
+                        rawValue = `${a.rawValue} (${tenThousand} 万次)`;
+                    } else if (key.includes('total_lbas_read') || key.includes('total_lbas_written') || key.includes('total_host_reads') || key.includes('total_host_writes')) {
+                        // 每个单位 = 1个扇区 = 512字节
+                        const tb = (rawNum * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
+                        rawValue = `${tb} TB (${rawNum} 扇区)`;
                     } else if (key.includes('controller_busy_time') || key.includes('critical_comp_time') || key.includes('warning_temp_time')) {
-                        // 这些通常是分钟，转换为小时
                         const hours = (rawNum / 60).toFixed(2);
                         rawValue = `${a.rawValue} (${hours} 小时)`;
-                    } else if (key.includes('power_on_hours') || (key.includes('power_cycles') && a.rawValue.length > 4)) {
-                        // power_on_hours 已经是小时，直接添加单位
+                    } else if (key.includes('power_on_hours') && (a.rawValue.length > 4 || rawNum > 100)) {
                         rawValue = `${a.rawValue} 小时`;
                     }
                 }
@@ -375,13 +519,91 @@ async function showDiskDetail(diskId) {
                 <td>${a.worstValue}</td>
                 <td>${a.threshold}</td>
                 <td>${rawValue}</td>
-                <td>${statusBadge}</td>
             </tr>`;
         });
-        html += `</table>`;
+        html += `</table></div></div>`;
+    }
+
+    // 获取最新AI分析结果
+    html += `<div style="margin-top: 20px;"><h3>AI分析结果</h3>`;
+    if (data.analysis && data.analysis.length > 0) {
+        const latestAnalysis = data.analysis[data.analysis.length - 1];
+        html += `<div class='analysis-result'>${escapeHtml(latestAnalysis.result)}</div>
+        <p><small>分析时间: ${latestAnalysis.createdAt.replace('T', ' ')}</small></p>`;
+    } else {
+        html += `<p>暂无AI分析结果</p>`;
+    }
+    html += `</div>`;
+
+    // 绘制温度变化图表
+    if (data.smart.length > 1) {
+        const temps = [];
+        const labels = [];
+        let index = 0;
+        // 每天只取一个点，避免过多数据
+        const seenDays = new Set();
+        data.smart.forEach(s => {
+            const date = s.recordTime.split('T')[0];
+            if (!seenDays.has(date) || index === data.smart.length - 1) {
+                seenDays.add(date);
+                const tempAttr = findAttributeByKey(s.attributes, 'temperature');
+                if (tempAttr && tempAttr.rawValue !== null && !isNaN(parseInt(tempAttr.rawValue))) {
+                    labels.push(date);
+                    temps.push(parseInt(tempAttr.rawValue));
+                }
+                index++;
+            }
+        });
+
+        if (temps.length > 1) {
+            html += `
+            <div style="margin-top: 20px;">
+                <h3>温度历史变化</h3>
+                <div class="chart-container">
+                    <canvas id="temp-chart"></canvas>
+                </div>
+            </div>`;
+        }
     }
 
     showModal('硬盘详情', html);
+
+    // 绘制图表，如果有温度数据的话
+    if (typeof temps !== 'undefined' && temps.length > 1) {
+        const ctx = document.getElementById('temp-chart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '温度 (°C)',
+                    data: temps,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+}
+
+function toggleFullAttributes() {
+    const el = document.getElementById('full-attributes');
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+        event.target.textContent = '隐藏完整SMART属性列表';
+    } else {
+        el.style.display = 'none';
+        event.target.textContent = '显示完整SMART属性列表';
+    }
 }
 
 async function showAnalysisResult(analysisId) {
@@ -398,7 +620,6 @@ async function showAnalysisResult(analysisId) {
 }
 
 function editDiskCron(diskId, currentCron, monitored) {
-    // HTML解码
     currentCron = currentCron.replace(/"/g, '"').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
     const html = `
         <h2>编辑监控配置</h2>
@@ -426,6 +647,7 @@ async function saveDiskCron(e, diskId) {
     e.preventDefault();
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData);
+    data.monitored = data.monitored === 'true';
     const res = await fetch(`/api/disk/${diskId}/update`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -446,7 +668,6 @@ function showModal(title, content) {
     document.getElementById('detail-modal').style.display = 'block';
 }
 
-// 修复事件冒泡问题，确保点击模态框内部不会关闭弹窗
 document.querySelector('.modal-content').addEventListener('click', function(e) {
     e.stopPropagation();
 });
@@ -456,12 +677,12 @@ function closeModal() {
 }
 
 function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// 点击模态框背景关闭
 document.getElementById('detail-modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
