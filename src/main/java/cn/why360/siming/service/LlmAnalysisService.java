@@ -275,7 +275,7 @@ public class LlmAnalysisService {
     }
 
     /**
-     * 格式化SMART数据，只关注关键属性
+     * 格式化SMART数据，提供昨天、上周、上个月三份历史数据，让大模型分析趋势
      */
     private String formatSmartData(List<SmartRecord> records) {
         if (records.isEmpty()) {
@@ -293,14 +293,23 @@ public class LlmAnalysisService {
                 "Power_On_Hours",
                 "Power_Cycle_Count",
                 "Media_Errors",
-                "Total_LBAs_Written"
+                "Total_LBAs_Written",
+                "Data_Units_Written",
+                "Data_Units_Read",
+                "Percentage_Used",
+                "Host_Writes",
+                "Host_Reads",
+                "Host_Write_Commands",
+                "Host_Read_Commands"
         );
 
-        // 按属性分组，找出最早和最新的值
+        // 先按属性名称分组，每个属性下有多个时间点的记录
         Map<String, List<SmartRecord>> grouped = new HashMap<>();
         for (SmartRecord record : records) {
             String name = record.getAttributeName();
-            if (importantAttributes.contains(name) || importantAttributes.stream().anyMatch(name::contains)) {
+            boolean isImportant = importantAttributes.stream()
+                    .anyMatch(imp -> name.contains(imp) || imp.contains(name));
+            if (isImportant) {
                 grouped.computeIfAbsent(name, k -> new ArrayList<>()).add(record);
             }
         }
@@ -309,25 +318,50 @@ public class LlmAnalysisService {
             return "No important SMART attributes found";
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime yesterday = now.minusDays(1);
+        LocalDateTime oneWeekAgo = now.minusWeeks(1);
+        LocalDateTime oneMonthAgo = now.minusMonths(1);
+
         StringJoiner sj = new StringJoiner("\n");
-        sj.add("属性名称 | 初始值 | 当前值 | 阈值 | 原始值初始 | 原始值当前");
-        sj.add("--------|-------|-------|------|------------|-----------");
+        sj.add("以下是不同时间点的SMART关键属性数据，用于分析健康趋势：");
+        sj.add("");
+        sj.add("属性名称 | 一个月前 | 一周前 | 昨天 | 当前 | 阈值");
+        sj.add("--------|---------|-------|------|------|------");
 
         for (Map.Entry<String, List<SmartRecord>> entry : grouped.entrySet()) {
+            String attrName = entry.getKey();
             List<SmartRecord> attrRecords = entry.getValue();
+            // 按时间排序
             attrRecords.sort((a, b) -> a.getRecordTime().compareTo(b.getRecordTime()));
 
-            SmartRecord first = attrRecords.get(0);
-            SmartRecord last = attrRecords.get(attrRecords.size() - 1);
+            // 找每个时间点最接近的记录
+            SmartRecord monthAgoRecord = findClosestRecord(attrRecords, oneMonthAgo);
+            SmartRecord weekAgoRecord = findClosestRecord(attrRecords, oneWeekAgo);
+            SmartRecord yesterdayRecord = findClosestRecord(attrRecords, yesterday);
+            SmartRecord currentRecord = attrRecords.get(attrRecords.size() - 1); // 最新
 
-            sj.add(String.format("%s | %d | %d | %d | %d | %d",
-                    entry.getKey(),
-                    first.getCurrentValue(),
-                    last.getCurrentValue(),
-                    last.getThreshold(),
-                    first.getRawValue(),
-                    last.getRawValue()));
+            Long monthAgoRaw = monthAgoRecord != null ? monthAgoRecord.getRawValue() : null;
+            Long weekAgoRaw = weekAgoRecord != null ? weekAgoRecord.getRawValue() : null;
+            Long yesterdayRaw = yesterdayRecord != null ? yesterdayRecord.getRawValue() : null;
+            Long currentRaw = currentRecord != null ? currentRecord.getRawValue() : null;
+            Integer threshold = currentRecord != null ? currentRecord.getThreshold() : null;
+
+            String monthStr = monthAgoRaw != null ? String.valueOf(monthAgoRaw) : "-";
+            String weekStr = weekAgoRaw != null ? String.valueOf(weekAgoRaw) : "-";
+            String yesterdayStr = yesterdayRaw != null ? String.valueOf(yesterdayRaw) : "-";
+            String currentStr = currentRaw != null ? String.valueOf(currentRaw) : "-";
+            String thresholdStr = threshold != null ? String.valueOf(threshold) : "-";
+
+            sj.add(String.format("%s | %s | %s | %s | %s | %s",
+                    attrName, monthStr, weekStr, yesterdayStr, currentStr, thresholdStr));
         }
+
+        sj.add("");
+        sj.add("说明：");
+        sj.add("- Data_Units_Read / Data_Units_Written：每单位 = 1 个扇区 = 512字节，可直接累积计算总读写量");
+        sj.add("- Reallocated_Sector_Ct / Current_Pending_Sector / Offline_Uncorrectable：数值越高表示坏道越多");
+        sj.add("- 对于累积计数器（Power_On_Hours、Data_Units_Written、Total_LBAs_Written等），增量即为对应时间范围内的变化");
 
         // 添加温度统计
         List<SmartRecord> temperatureRecords = new ArrayList<>();
@@ -346,10 +380,84 @@ public class LlmAnalysisService {
                     .mapToInt(SmartRecord::getTemperature)
                     .max()
                     .orElse(0);
-            sj.add("\n温度统计: 平均 " + avgTemp + "°C, 最高 " + maxTemp + "°C");
+            int minTemp = temperatureRecords.stream()
+                    .mapToInt(SmartRecord::getTemperature)
+                    .min()
+                    .orElse(0);
+            sj.add("\n温度统计: 平均 " + avgTemp + "°C, 最低 " + minTemp + "°C, 最高 " + maxTemp + "°C");
         }
 
         return sj.toString();
+    }
+
+    /**
+     * 辅助类：存储单个属性在不同时间点的数据
+     */
+    private static class SmartAttributePoint {
+        String type; // monthAgo, weekAgo, yesterday, current
+        long rawValue;
+        int threshold;
+
+        public SmartAttributePoint(String type, long rawValue, int threshold) {
+            this.type = type;
+            this.rawValue = rawValue;
+            this.threshold = threshold;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public long getRawValue() {
+            return rawValue;
+        }
+
+        public int getThreshold() {
+            return threshold;
+        }
+    }
+
+    /**
+     * 找到最接近目标时间的记录
+     */
+    private SmartRecord findClosestRecord(List<SmartRecord> sortedRecords, LocalDateTime targetTime) {
+        if (sortedRecords.isEmpty()) {
+            return null;
+        }
+        // 记录已经按时间排序
+        SmartRecord closest = null;
+        long minDiff = Long.MAX_VALUE;
+        for (SmartRecord record : sortedRecords) {
+            LocalDateTime recordTime = record.getRecordTime();
+            long diff = Math.abs(recordTime.toEpochSecond(java.time.ZoneOffset.UTC) - targetTime.toEpochSecond(java.time.ZoneOffset.UTC));
+            if (diff < minDiff) {
+                minDiff = diff;
+                closest = record;
+            }
+        }
+        // 如果最接近的记录相差超过2天，说明没有这个时间点的数据，返回null
+        if (minDiff > 2 * 24 * 60 * 60) {
+            return null;
+        }
+        return closest;
+    }
+
+    private Long getRawForType(List<SmartAttributePoint> points, String type) {
+        for (SmartAttributePoint p : points) {
+            if (type.equals(p.getType())) {
+                return p.getRawValue();
+            }
+        }
+        return null;
+    }
+
+    private Integer getThreshold(List<SmartAttributePoint> points) {
+        for (SmartAttributePoint p : points) {
+            if (p.getThreshold() > 0) {
+                return p.getThreshold();
+            }
+        }
+        return null;
     }
 
     /**
@@ -451,18 +559,20 @@ public class LlmAnalysisService {
                 "时间区间：{{startTime}} 到 {{endTime}}\n\n" +
                 "容量变化数据：\n" +
                 "{{capacityData}}\n\n" +
-                "SMART属性变化数据：\n" +
+                "SMART属性历史数据（按不同时间点提供：一个月前、一周前、昨天、当前）：\n" +
                 "{{smartData}}\n\n" +
                 "请分析：\n" +
                 "1. 容量使用趋势是怎样的，是否存在异常增长\n" +
-                "2. SMART各项指标是否有异常变化，特别是：\n" +
-                "   - 坏块数量（Reallocated_Sector_Ct）\n" +
-                "   - 待映射扇区（Current_Pending_Sector）\n" +
-                "   - 不可修复错误（Offline_Uncorrectable）\n" +
+                "2. 通过对比一个月前、一周前、昨天、当前的数据，分析各指标的变化趋势：\n" +
+                "   - 坏块数量变化（Reallocated_Sector_Ct、Current_Pending_Sector、Offline_Uncorrectable）\n" +
+                "   - 累积读写量增长计算（Data_Units_Read、Data_Units_Written）\n" +
+                "   - 通电时间增长（Power_On_Hours）\n" +
                 "   - 温度变化情况\n" +
-                "3. 根据历史数据变化推测硬盘健康状况\n" +
-                "4. 给出明确的建议：是否需要备份数据，是否需要更换硬盘等\n" +
-                "5. 最后给出一个0-100的健康评分\n\n" +
+                "   - 寿命百分比变化（Percentage_Used）\n" +
+                "3. 根据趋势判断硬盘健康状况变化速度，是否在快速劣化\n" +
+                "4. SMART各项指标是否存在异常值\n" +
+                "5. 给出明确的建议：是否需要备份数据，是否需要更换硬盘等\n" +
+                "6. 最后给出一个0-100的健康评分\n\n" +
                 "请用中文给出清晰专业的分析结论和建议。";
     }
 
