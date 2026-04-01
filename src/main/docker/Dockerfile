@@ -1,4 +1,4 @@
-FROM maven:3.9-eclipse-temurin-11 AS builder
+FROM registry.cn-hangzhou.aliyuncs.com/library/maven:3.9-eclipse-temurin-11 AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY ../../.. .
 RUN mvn package -DskipTests
 
 # 最终运行镜像
-FROM eclipse-temurin:11-jre-alpine
+FROM registry.cn-hangzhou.aliyuncs.com/library/eclipse-temurin:11-jre-alpine
 
 WORKDIR /app
 
