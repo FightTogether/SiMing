@@ -229,15 +229,22 @@ public class LlmAnalysisService {
         replacements.put("brand", disk.getBrand() != null ? disk.getBrand() : "Unknown");
         replacements.put("model", disk.getModel() != null ? disk.getModel() : "Unknown");
         replacements.put("serial", disk.getSerialNumber() != null ? disk.getSerialNumber() : "Unknown");
+        replacements.put("serialNumber", disk.getSerialNumber() != null ? disk.getSerialNumber() : "Unknown");
         replacements.put("totalSize", String.format("%.2f", disk.getTotalCapacityGB()));
+        replacements.put("total_capacity_gb", String.format("%.2f", disk.getTotalCapacityGB()));
+        replacements.put("is_ssd", disk.isSSD() ? "SSD" : "HDD");
         replacements.put("startTime", startTime.format(DATE_FORMATTER));
         replacements.put("endTime", endTime.format(DATE_FORMATTER));
         replacements.put("capacityData", formatCapacityData(capacityRecords));
+        replacements.put("smart_data", formatSmartData(smartRecords));
         replacements.put("smartData", formatSmartData(smartRecords));
+        replacements.put("capacity_data", formatCapacityData(capacityRecords));
+        replacements.put("capacityData", formatCapacityData(capacityRecords));
 
-        // 替换占位符
+        // 替换占位符 - 同时兼容 {{xxx}} 和 {xxx} 两种格式（兼容新旧模板）
         for (Map.Entry<String, String> entry : replacements.entrySet()) {
             template = template.replace("{{" + entry.getKey() + "}}", entry.getValue());
+            template = template.replace("{" + entry.getKey() + "}", entry.getValue());
         }
 
         return template;
