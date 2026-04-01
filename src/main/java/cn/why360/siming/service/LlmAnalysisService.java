@@ -204,8 +204,8 @@ public class LlmAnalysisService {
         // 保存分析结果
         AnalysisResult result = AnalysisResult.builder()
                 .diskId(disk.getId())
-                .startTime(startTime)
-                .endTime(endTime)
+                .startTime(startTime.format(DATE_FORMATTER))
+                .endTime(endTime.format(DATE_FORMATTER))
                 .analysisContent(response)
                 .healthScore(healthScore)
                 .healthLevel(healthLevel)
@@ -262,8 +262,8 @@ public class LlmAnalysisService {
         // 保存分析结果
         AnalysisResult result = AnalysisResult.builder()
                 .diskId(disk.getId())
-                .startTime(threeHundredSixtyFiveDaysAgo)
-                .endTime(now)
+                .startTime(threeHundredSixtyFiveDaysAgo.format(DATE_FORMATTER))
+                .endTime(now.format(DATE_FORMATTER))
                 .analysisContent(response)
                 .healthScore(healthScore)
                 .healthLevel(healthLevel)

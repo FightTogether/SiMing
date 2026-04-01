@@ -105,8 +105,8 @@ public class DatabaseManager {
             "CREATE TABLE IF NOT EXISTS analysis_results (" +
             "  id INTEGER PRIMARY KEY AUTOINCREMENT," +
             "  disk_id INTEGER NOT NULL," +
-            "  start_time TIMESTAMP NOT NULL," +
-            "  end_time TIMESTAMP NOT NULL," +
+            "  start_time TEXT NOT NULL," +
+            "  end_time TEXT NOT NULL," +
             "  analysis_content TEXT," +
             "  health_score INTEGER," +
             "  health_level TEXT," +

@@ -5,8 +5,6 @@ import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
-import java.time.LocalDateTime;
-
 /**
  * 大模型分析结果实体
  */
@@ -25,12 +23,12 @@ public class AnalysisResult {
     /**
      * 分析开始时间
      */
-    private LocalDateTime startTime;
+    private String startTime;
 
     /**
      * 分析结束时间
      */
-    private LocalDateTime endTime;
+    private String endTime;
 
     /**
      * 大模型生成的分析内容
@@ -55,5 +53,5 @@ public class AnalysisResult {
     /**
      * 创建时间
      */
-    private LocalDateTime createTime;
+    private String createTime;
 }
