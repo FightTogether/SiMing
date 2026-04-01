@@ -11,7 +11,7 @@ COPY ../../.. .
 RUN mvn package -DskipTests
 
 # 最终运行镜像
-FROM openjdk:11-jre-slim
+FROM openjdk:11-jre
 
 WORKDIR /app
 
