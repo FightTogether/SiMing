@@ -1,4 +1,4 @@
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-11 AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY . .
 RUN mvn package -DskipTests
 
 # 最终运行镜像
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:11-jre-alpine
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN apk add --no-cache smartmontools && \
     rm -rf /var/cache/apk/*
 
 # 复制构建好的jar
-COPY --from=builder /app/target/siming-1.0.0.jar app.jar
+COPY --from=builder /app/target/siming-1.0-SNAPSHOT.jar app.jar
 
 # 创建数据目录
 VOLUME /app/data
