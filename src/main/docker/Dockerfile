@@ -1,13 +1,28 @@
-
-# 最终运行镜像
-FROM eclipse-temurin:11-jre
+FROM registry.cn-hangzhou.aliyuncs.com/library/maven:3.8.6-jdk-11 AS builder
 
 WORKDIR /app
 
+# 复制pom文件并下载依赖
+COPY ../../../pom.xml .
+RUN mvn dependency:go-offline -B
+
+# 复制源代码并构建
+COPY ../../.. .
+RUN mvn package -DskipTests
+
+# 最终运行镜像
+FROM registry.cn-hangzhou.aliyuncs.com/library/openjdk:11-jre
+
+WORKDIR /app
+
+# 安装smartmontools用于获取SMART信息
+RUN apt-get update && \
+    apt-get install -y smartmontools && \
+    rm -rf /var/lib/apt/lists/*
 
 # 复制构建好的jar
-#ADD *-siming-1.0-SNAPSHOT.jar app.jar
-ADD *-dependencies.jar app.jar
+COPY --from=builder /app/target/siming-1.0-SNAPSHOT.jar app.jar
+
 # 创建数据目录
 VOLUME /app/data
 
@@ -15,6 +30,7 @@ VOLUME /app/data
 VOLUME /app/config
 
 # 设置环境变量
+ENV OPENAI_API_KEY=""
 ENV SIMING_CONFIG="/app/config/application.yml"
 
 # 入口点
