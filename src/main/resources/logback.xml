@@ -37,6 +37,19 @@
     <logger name="org.springframework.jdbc.core" level="TRACE" />
     <logger name="org.springframework.jdbc.core.JdbcTemplate" level="TRACE" />
 
+    <!-- MyBatis日志配置 - 打印SQL语句和参数 -->
+    <logger name="org.mybatis" level="DEBUG" />
+    <logger name="cn.why360.siming.mapper" level="TRACE" />
+    <logger name="org.apache.ibatis" level="DEBUG" />
+    <logger name="org.apache.ibatis.cache" level="WARN" />
+    <logger name="org.apache.ibatis.connection" level="DEBUG" />
+    <logger name="org.apache.ibatis.transaction" level="DEBUG" />
+    <logger name="org.apache.ibatis.executor" level="TRACE" />
+    <logger name="org.apache.ibatis.executor.statement" level="TRACE" />
+    <logger name="org.apache.ibatis.datasource" level="DEBUG" />
+    <logger name="org.apache.ibatis.logging" level="DEBUG" />
+    <logger name="org.apache.ibatis.io" level="WARN" />
+
     <!-- Spring MVC请求日志，打印请求URL和参数 -->
     <logger name="org.springframework.web" level="DEBUG" />
     <logger name="org.springframework.web.servlet" level="DEBUG" />

@@ -12,6 +12,7 @@ import cn.why360.siming.service.DiskDiscoveryService;
 import cn.why360.siming.service.LlmAnalysisService;
 import cn.why360.siming.service.SmartReaderService;
 import com.zaxxer.hikari.HikariDataSource;
+import org.mybatis.spring.annotation.MapperScan;
 import org.quartz.SchedulerException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +23,7 @@ import javax.sql.DataSource;
  * Spring配置类 - 注册所有Bean
  */
 @Configuration
+@MapperScan("cn.why360.siming.mapper")
 public class SpringConfig {
 
     @Bean
@@ -37,31 +39,6 @@ public class SpringConfig {
     @Bean
     public DatabaseManager databaseManager(SimingConfig config) {
         return new DatabaseManager(config);
-    }
-
-    @Bean
-    public DiskDAO diskDAO(DatabaseManager databaseManager) {
-        return new DiskDAO(databaseManager);
-    }
-
-    @Bean
-    public CapacityRecordDAO capacityRecordDAO(DatabaseManager databaseManager) {
-        return new CapacityRecordDAO(databaseManager);
-    }
-
-    @Bean
-    public SmartRecordDAO smartRecordDAO(DatabaseManager databaseManager) {
-        return new SmartRecordDAO(databaseManager);
-    }
-
-    @Bean
-    public AnalysisResultDAO analysisResultDAO(DatabaseManager databaseManager) {
-        return new AnalysisResultDAO(databaseManager);
-    }
-
-    @Bean
-    public LlmConfigDAO llmConfigDAO(DatabaseManager databaseManager) {
-        return new LlmConfigDAO(databaseManager);
     }
 
     @Bean
