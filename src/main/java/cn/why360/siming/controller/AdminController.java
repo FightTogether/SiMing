@@ -413,13 +413,46 @@ public class AdminController {
             // 解析df原始数据并保存容量记录
             if (dfRaw != null && !dfRaw.isEmpty()) {
                 List<CapacityRecord> capacityRecords = smartReaderService.parseDfRaw(dfRaw);
+                int capacitySaved = 0;
                 for (CapacityRecord record : capacityRecords) {
-                    // 需要匹配到磁盘？磁盘分区和磁盘是多对一关系，我们找到对应的磁盘
-                    // 这里客户端发现的每个磁盘可能包含多个分区，直接关联不到。先保持现有逻辑不变化
-                    // 实际上容量是分区的信息，无法直接关联到整个磁盘，所以只保存原始文件不入库
-                    // 后续可以扩展，但按照用户目前需求只需要保存原始文件
+                    // 匹配文件系统到对应的磁盘
+                    // 文件系统路径格式: /dev/sda1, /dev/nvme0n1p1 等
+                    String filesystem = record.getMountPoint();
+                    // 查找匹配的磁盘：磁盘设备路径是文件系统路径的前缀
+                    // 例如 /dev/sda1 属于 /dev/sda, /dev/nvme0n1p1 属于 /dev/nvme0n1
+                    for (Map<String, Object> diskData : disks) {
+                        String diskDevicePath = (String) diskData.get("device_path");
+                        String fsPath = record.getFilesystem();
+                        if (fsPath != null && fsPath.startsWith(diskDevicePath)) {
+                            // 检查匹配规则：分区名称是硬盘名加上数字或p
+                            if (fsPath.length() > diskDevicePath.length()) {
+                                char nextChar = fsPath.charAt(diskDevicePath.length());
+                                if (!Character.isLetter(nextChar) || nextChar == 'p') {
+                                    // 找到对应的磁盘ID
+                                    Optional<Disk> existingDisk = diskDAO.findByClientIdAndDevicePath(clientId, diskDevicePath);
+                                    if (existingDisk.isPresent()) {
+                                        record.setDiskId(existingDisk.get().getId());
+                                        capacityDAO.insert(record);
+                                        capacitySaved++;
+                                        logger.debug("Saved capacity record for filesystem {} on disk {}",
+                                                fsPath, existingDisk.get().getId());
+                                    }
+                                }
+                            } else if (fsPath.equals(diskDevicePath)) {
+                                // 正好相等说明整个硬盘就是一个分区
+                                Optional<Disk> existingDisk = diskDAO.findByClientIdAndDevicePath(clientId, diskDevicePath);
+                                if (existingDisk.isPresent()) {
+                                    record.setDiskId(existingDisk.get().getId());
+                                    capacityDAO.insert(record);
+                                    capacitySaved++;
+                                    logger.debug("Saved capacity record for entire disk {}: {}",
+                                            diskDevicePath, existingDisk.get().getId());
+                                }
+                            }
+                        }
+                    }
                 }
-                logger.info("df raw data has {} lines", dfRaw.split("\n").length);
+                logger.info("Parsed df raw data, saved {} capacity records to database", capacitySaved);
             }
 
             result.put("success", true);

@@ -25,17 +25,18 @@ public class CapacityRecordDAO {
      * 插入容量记录
      */
     public void insert(CapacityRecord record) {
-        String sql = "INSERT INTO capacity_records (disk_id, used_capacity, available_capacity, usage_percent, mount_point) " +
-                "VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO capacity_records (disk_id, filesystem, used_capacity, available_capacity, usage_percent, mount_point) " +
+                "VALUES (?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = databaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, record.getDiskId());
-            stmt.setLong(2, record.getUsedCapacity());
-            stmt.setLong(3, record.getAvailableCapacity());
-            stmt.setDouble(4, record.getUsagePercent());
-            stmt.setString(5, record.getMountPoint());
+            stmt.setString(2, record.getFilesystem());
+            stmt.setLong(3, record.getUsedCapacity());
+            stmt.setLong(4, record.getAvailableCapacity());
+            stmt.setDouble(5, record.getUsagePercent());
+            stmt.setString(6, record.getMountPoint());
             stmt.executeUpdate();
 
             logger.debug("Inserted capacity record for disk id {}", record.getDiskId());
@@ -58,8 +59,8 @@ public class CapacityRecordDAO {
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, diskId);
-            stmt.setTimestamp(2, Timestamp.valueOf(startTime));
-            stmt.setTimestamp(3, Timestamp.valueOf(endTime));
+            stmt.setString(2, startTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            stmt.setString(3, endTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -115,7 +116,7 @@ public class CapacityRecordDAO {
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, diskId);
-            stmt.setTimestamp(2, Timestamp.valueOf(beforeTime));
+            stmt.setString(2, beforeTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -162,6 +163,7 @@ public class CapacityRecordDAO {
         return CapacityRecord.builder()
                 .id(rs.getLong("id"))
                 .diskId(rs.getLong("disk_id"))
+                .filesystem(rs.getString("filesystem"))
                 .usedCapacity(rs.getLong("used_capacity"))
                 .availableCapacity(rs.getLong("available_capacity"))
                 .usagePercent(rs.getDouble("usage_percent"))

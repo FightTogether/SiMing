@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 控制台输出 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 根日志级别 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+    </root>
+
+    <!-- 开启SQL和参数日志，打印所有执行的SQL语句和参数 -->
+    <!-- HikariCP连接池日志 -->
+    <logger name="com.zaxxer.hikari" level="DEBUG" />
+    <logger name="com.zaxxer.hikari.HikariConfig" level="DEBUG" />
+    <logger name="com.zaxxer.hikari.HikariDataSource" level="DEBUG" />
+    <logger name="com.zaxxer.hikari.pool" level="DEBUG" />
+
+    <!-- DAO层日志 -->
+    <logger name="cn.why360.siming.dao" level="DEBUG" />
+    <logger name="cn.why360.siming.database" level="DEBUG" />
+
+    <!-- 底层JDBC日志，可以看到所有SQL执行和参数绑定 -->
+    <logger name="java.sql" level="DEBUG" />
+    <logger name="java.sql.Connection" level="DEBUG" />
+    <logger name="java.sql.Statement" level="DEBUG" />
+    <logger name="java.sql.PreparedStatement" level="TRACE" />
+    <logger name="java.sql.ResultSet" level="DEBUG" />
+
+    <!-- SQLite JDBC驱动日志 -->
+    <logger name="org.sqlite" level="DEBUG" />
+    <!-- 启用Spring JDBC模板日志 -->
+    <logger name="org.springframework.jdbc" level="TRACE" />
+    <logger name="org.springframework.jdbc.core" level="TRACE" />
+    <logger name="org.springframework.jdbc.core.JdbcTemplate" level="TRACE" />
+
+    <!-- Spring MVC请求日志，打印请求URL和参数 -->
+    <logger name="org.springframework.web" level="DEBUG" />
+    <logger name="org.springframework.web.servlet" level="DEBUG" />
+    <logger name="org.springframework.web.servlet.mvc" level="DEBUG" />
+    <logger name="org.springframework.web.servlet.handler" level="DEBUG" />
+    <logger name="cn.why360.siming.controller" level="DEBUG" />
+</configuration>

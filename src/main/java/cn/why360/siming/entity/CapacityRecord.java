@@ -23,6 +23,11 @@ public class CapacityRecord {
     private Long diskId;
 
     /**
+     * 文件系统路径（/dev/sda1等）
+     */
+    private String filesystem;
+
+    /**
      * 已用容量（字节）
      */
     private long usedCapacity;

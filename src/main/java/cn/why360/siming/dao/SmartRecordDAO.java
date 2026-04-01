@@ -97,8 +97,8 @@ public class SmartRecordDAO {
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, diskId);
-            stmt.setTimestamp(2, Timestamp.valueOf(startTime));
-            stmt.setTimestamp(3, Timestamp.valueOf(endTime));
+            stmt.setString(2, startTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            stmt.setString(3, endTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -119,19 +119,19 @@ public class SmartRecordDAO {
         List<SmartRecord> records = new ArrayList<>();
         String sql = "SELECT sr.* FROM smart_records sr " +
                 "INNER JOIN ( " +
-                "  SELECT attribute_id, MAX(record_time) as max_time " +
+                "  SELECT disk_id, attribute_id, MAX(record_time) as max_time " +
                 "  FROM smart_records " +
                 "  WHERE disk_id = ? " +
-                "  GROUP BY attribute_id " +
-                ") latest ON sr.attribute_id = latest.attribute_id AND sr.record_time = latest.max_time " +
-                "WHERE sr.disk_id = ? " +
+                "  GROUP BY disk_id, attribute_id " +
+                ") latest ON sr.disk_id = latest.disk_id " +
+                "          AND sr.attribute_id = latest.attribute_id " +
+                "          AND sr.record_time = latest.max_time " +
                 "ORDER BY sr.attribute_id";
 
         try (Connection conn = databaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, diskId);
-            stmt.setLong(2, diskId);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -153,20 +153,20 @@ public class SmartRecordDAO {
         List<SmartRecord> records = new ArrayList<>();
         String sql = "SELECT sr.* FROM smart_records sr " +
                 "INNER JOIN ( " +
-                "  SELECT attribute_id, MAX(record_time) as max_time " +
+                "  SELECT disk_id, attribute_id, MAX(record_time) as max_time " +
                 "  FROM smart_records " +
                 "  WHERE disk_id = ? AND record_time <= ? " +
-                "  GROUP BY attribute_id " +
-                ") latest ON sr.attribute_id = latest.attribute_id AND sr.record_time = latest.max_time " +
-                "WHERE sr.disk_id = ? " +
+                "  GROUP BY disk_id, attribute_id " +
+                ") latest ON sr.disk_id = latest.disk_id " +
+                "          AND sr.attribute_id = latest.attribute_id " +
+                "          AND sr.record_time = latest.max_time " +
                 "ORDER BY sr.attribute_id";
 
         try (Connection conn = databaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, diskId);
-            stmt.setTimestamp(2, Timestamp.valueOf(beforeTime));
-            stmt.setLong(3, diskId);
+            stmt.setString(2, beforeTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {

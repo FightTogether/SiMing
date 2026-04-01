@@ -85,6 +85,7 @@ CREATE TABLE disks (
 CREATE TABLE capacity_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   disk_id INTEGER NOT NULL,
+  filesystem TEXT,
   used_capacity INTEGER NOT NULL,
   available_capacity INTEGER NOT NULL,
   usage_percent REAL NOT NULL,

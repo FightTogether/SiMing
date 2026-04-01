@@ -88,6 +88,7 @@ public class CapacityMonitorService {
 
             CapacityRecord record = CapacityRecord.builder()
                     .diskId(diskId)
+                    .filesystem("total") // 标记为总容量
                     .usedCapacity(totalUsed)
                     .availableCapacity(totalAvailable)
                     .usagePercent(usagePercent)

@@ -458,6 +458,11 @@ public class SmartReaderService {
                     continue;
                 }
 
+                // 第一个匹配组就是文件系统路径
+                int start = 0;
+                int end = line.indexOf(' ');
+                String filesystem = line.substring(start, end).trim();
+
                 Matcher matcher = DF_LINE_PATTERN.matcher(line);
                 if (matcher.matches()) {
                     long totalBlocks = Long.parseLong(matcher.group(1));
@@ -472,10 +477,9 @@ public class SmartReaderService {
                     long availableCapacity = availableBlocks * 1024;
 
                     CapacityRecord record = new CapacityRecord();
-                    // 注意：这里无法直接关联diskId，客户端已经关联好了吗？不，分布式模式下由客户端已经划分好每个磁盘包含哪些分区
-                    // 但是在分布式模式下客户端不会解析，所以这里只保存原始数据到文件，容量解析暂时不入库
-                    // 保留方法用于将来扩展
+                    // 注意：这里无法直接关联diskId，需要在Controller中根据文件系统路径匹配
                     record.setDiskId(null);
+                    record.setFilesystem(filesystem);
                     record.setUsedCapacity(usedCapacity);
                     record.setAvailableCapacity(availableCapacity);
                     record.setUsagePercent(usagePercent);
