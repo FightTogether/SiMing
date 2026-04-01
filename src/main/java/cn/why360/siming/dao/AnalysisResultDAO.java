@@ -36,18 +36,17 @@ public class AnalysisResultDAO {
     public List<AnalysisResult> findAllByCreateTimeDesc() {
         // MyBatis没有支持全局排序，这里先返回所有（数据量不会太大）
         List<AnalysisResult> allResults = findAll();
-        allResults.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
-        return allResults;
+        // 复制到可变列表再排序
+        List<AnalysisResult> mutableResults = new java.util.ArrayList<>(allResults);
+        mutableResults.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
+        return mutableResults;
     }
 
     /**
      * 获取所有分析结果
      */
     public List<AnalysisResult> findAll() {
-        // 由于我们没有findAll方法在Mapper中，直接从所有硬盘聚合
-        // 对于当前应用来说，数据量不大，这样处理是可接受的
-        // 实际项目中应该添加findAll方法到Mapper，这里为了简化暂时不添加
-        return List.of();
+        return analysisResultMapper.findAll();
     }
 
     /**

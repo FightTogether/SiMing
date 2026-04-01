@@ -63,4 +63,11 @@ public interface AnalysisResultMapper {
      */
     @Select("SELECT COUNT(*) FROM analysis_results WHERE disk_id = #{diskId}")
     long countByDiskId(Long diskId);
+
+    /**
+     * 获取所有分析结果
+     */
+    @Select("SELECT * FROM analysis_results")
+    @ResultMap("analysisResultResultMap")
+    List<AnalysisResult> findAll();
 }

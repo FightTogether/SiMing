@@ -299,7 +299,97 @@ public class LlmAnalysisService {
         replacements.put("capacity_data", formatCapacityData(capacityRecords));
         replacements.put("capacityData", formatCapacityData(capacityRecords));
 
-        // 替换占位符 - 同时兼容 {{xxx}} 和 {xxx} 两种格式（兼容新旧模板）
+        // 替换占位符 - 同时兼容多种格式：
+        // 1. {{variable}} 标准格式
+        // 2. {variable} 简写格式
+        // 3. {variable:trueValue:falseValue} 条件格式（布尔值）
+        // 4. {variable:.2f} 格式化格式（数值）
+        // 先处理带格式的，再处理普通格式
+        StringBuffer sb = new StringBuffer();
+        
+        // 处理 {{variable:format}} 格式化格式，如 {{total_capacity_gb:.2f}}
+        java.util.regex.Pattern formatPattern = 
+            java.util.regex.Pattern.compile("\\{\\{([a-zA-Z0-9_]+):([.0-9f]+)\\}\\}");
+        java.util.regex.Matcher matcher = formatPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String format = matcher.group(2);
+            String replacement = replacements.get(varName);
+            if (replacement != null) {
+                try {
+                    double value = Double.parseDouble(replacement);
+                    String formatted = String.format("%" + format, value);
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(formatted));
+                } catch (NumberFormatException e) {
+                    // 如果无法转换为数字，直接使用原始替换值
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
+                }
+            }
+            // 如果变量不存在，保持原样
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 处理 {variable:format} 简写格式化格式，如 {total_capacity_gb:.2f}
+        sb = new StringBuffer();
+        formatPattern = java.util.regex.Pattern.compile("\\{([a-zA-Z0-9_]+):([.0-9f]+)\\}");
+        matcher = formatPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String format = matcher.group(2);
+            String replacement = replacements.get(varName);
+            if (replacement != null) {
+                try {
+                    double value = Double.parseDouble(replacement);
+                    String formatted = String.format("%" + format, value);
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(formatted));
+                } catch (NumberFormatException e) {
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
+                }
+            }
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 处理 {{variable:trueValue:falseValue}} 条件格式
+        sb = new StringBuffer();
+        java.util.regex.Pattern conditionalPattern = 
+            java.util.regex.Pattern.compile("\\{\\{([a-zA-Z0-9_]+):([^:}]+):([^}]+)\\}\\}");
+        matcher = conditionalPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String trueVal = matcher.group(2);
+            String falseVal = matcher.group(3);
+            String replacement = replacements.get(varName);
+            if (replacement != null && Boolean.parseBoolean(replacement)) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(trueVal));
+            } else if (replacement != null) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(falseVal));
+            }
+            // 如果变量不存在，保持原样
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 处理 {variable:trueValue:falseValue} 简写条件格式
+        sb = new StringBuffer();
+        conditionalPattern = java.util.regex.Pattern.compile("\\{([a-zA-Z0-9_]+):([^:}]+):([^}]+)\\}");
+        matcher = conditionalPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String trueVal = matcher.group(2);
+            String falseVal = matcher.group(3);
+            String replacement = replacements.get(varName);
+            if (replacement != null && Boolean.parseBoolean(replacement)) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(trueVal));
+            } else if (replacement != null) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(falseVal));
+            }
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 最后处理普通格式
         for (Map.Entry<String, String> entry : replacements.entrySet()) {
             template = template.replace("{{" + entry.getKey() + "}}", entry.getValue());
             template = template.replace("{" + entry.getKey() + "}", entry.getValue());
@@ -336,7 +426,97 @@ public class LlmAnalysisService {
         replacements.put("smart_data", formatFourPointSmartData(smartNow, smart7d, smart30d, smart365d));
         replacements.put("smartData", replacements.get("smart_data"));
 
-        // 替换占位符 - 同时兼容 {{xxx}} 和 {xxx} 两种格式（兼容新旧模板）
+        // 替换占位符 - 同时兼容多种格式：
+        // 1. {{variable}} 标准格式
+        // 2. {variable} 简写格式
+        // 3. {variable:trueValue:falseValue} 条件格式（布尔值）
+        // 4. {variable:.2f} 格式化格式（数值）
+        // 先处理带格式的，再处理普通格式
+        StringBuffer sb = new StringBuffer();
+        
+        // 处理 {{variable:format}} 格式化格式，如 {{total_capacity_gb:.2f}}
+        java.util.regex.Pattern formatPattern = 
+            java.util.regex.Pattern.compile("\\{\\{([a-zA-Z0-9_]+):([.0-9f]+)\\}\\}");
+        java.util.regex.Matcher matcher = formatPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String format = matcher.group(2);
+            String replacement = replacements.get(varName);
+            if (replacement != null) {
+                try {
+                    double value = Double.parseDouble(replacement);
+                    String formatted = String.format("%" + format, value);
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(formatted));
+                } catch (NumberFormatException e) {
+                    // 如果无法转换为数字，直接使用原始替换值
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
+                }
+            }
+            // 如果变量不存在，保持原样
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 处理 {variable:format} 简写格式化格式，如 {total_capacity_gb:.2f}
+        sb = new StringBuffer();
+        formatPattern = java.util.regex.Pattern.compile("\\{([a-zA-Z0-9_]+):([.0-9f]+)\\}");
+        matcher = formatPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String format = matcher.group(2);
+            String replacement = replacements.get(varName);
+            if (replacement != null) {
+                try {
+                    double value = Double.parseDouble(replacement);
+                    String formatted = String.format("%" + format, value);
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(formatted));
+                } catch (NumberFormatException e) {
+                    matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
+                }
+            }
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 处理 {{variable:trueValue:falseValue}} 条件格式
+        sb = new StringBuffer();
+        java.util.regex.Pattern conditionalPattern = 
+            java.util.regex.Pattern.compile("\\{\\{([a-zA-Z0-9_]+):([^:}]+):([^}]+)\\}\\}");
+        matcher = conditionalPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String trueVal = matcher.group(2);
+            String falseVal = matcher.group(3);
+            String replacement = replacements.get(varName);
+            if (replacement != null && Boolean.parseBoolean(replacement)) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(trueVal));
+            } else if (replacement != null) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(falseVal));
+            }
+            // 如果变量不存在，保持原样
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 处理 {variable:trueValue:falseValue} 简写条件格式
+        sb = new StringBuffer();
+        conditionalPattern = java.util.regex.Pattern.compile("\\{([a-zA-Z0-9_]+):([^:}]+):([^}]+)\\}");
+        matcher = conditionalPattern.matcher(template);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String trueVal = matcher.group(2);
+            String falseVal = matcher.group(3);
+            String replacement = replacements.get(varName);
+            if (replacement != null && Boolean.parseBoolean(replacement)) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(trueVal));
+            } else if (replacement != null) {
+                matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(falseVal));
+            }
+        }
+        matcher.appendTail(sb);
+        template = sb.toString();
+
+        // 最后处理普通格式
         for (Map.Entry<String, String> entry : replacements.entrySet()) {
             template = template.replace("{{" + entry.getKey() + "}}", entry.getValue());
             template = template.replace("{" + entry.getKey() + "}", entry.getValue());
