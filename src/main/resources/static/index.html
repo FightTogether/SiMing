@@ -272,11 +272,14 @@ async function showAnalysisResultMarkdown(analysisId) {
     const analysis = await res.json();
     const md = window.markdownit();
     const htmlContent = md.render(analysis.result);
+    const startTimeStr = formatDateTime(analysis.startTime);
+    const endTimeStr = formatDateTime(analysis.endTime);
+    const createdAtStr = formatDateTime(analysis.createdAt);
     const html = `
         <h2>分析结果</h2>
         <p><strong>硬盘:</strong> ${analysis.diskModel}<br>
-        <strong>时间范围:</strong> ${analysis.startTime} ~ ${analysis.endTime}<br>
-        <strong>创建时间:</strong> ${analysis.createdAt}</p>
+        <strong>时间范围:</strong> ${startTimeStr} ~ ${endTimeStr}<br>
+        <strong>创建时间:</strong> ${createdAtStr}</p>
         <div class='markdown-content'>${htmlContent}</div>
     `;
     showModal('分析结果', html);
@@ -701,6 +704,19 @@ function toggleFullAttributes() {
         el.style.display = 'none';
         event.target.textContent = '显示完整SMART属性列表';
     }
+}
+
+function formatDateTime(dtStr) {
+    if (!dtStr) return '';
+    const dt = new Date(dtStr);
+    if (isNaN(dt.getTime())) return dtStr;
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    const hours = String(dt.getHours()).padStart(2, '0');
+    const minutes = String(dt.getMinutes()).padStart(2, '0');
+    const seconds = String(dt.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 async function showAnalysisResult(analysisId) {
