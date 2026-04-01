@@ -133,12 +133,42 @@ public class AdminController {
      * 获取单个分析结果
      */
     @GetMapping("/analyses/{id}")
-    public AnalysisResult getAnalysisDetail(@PathVariable Long id) {
+    public Map<String, Object> getAnalysisDetail(@PathVariable Long id) {
         Optional<AnalysisResult> analysisOpt = analysisDAO.findById(id);
         if (analysisOpt.isEmpty()) {
             throw new RuntimeException("Analysis not found with id: " + id);
         }
-        return analysisOpt.get();
+        AnalysisResult analysis = analysisOpt.get();
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", analysis.getId());
+        result.put("diskId", analysis.getDiskId());
+        result.put("startTime", analysis.getStartTime());
+        result.put("endTime", analysis.getEndTime());
+        result.put("analysisContent", analysis.getAnalysisContent());
+        result.put("healthScore", analysis.getHealthScore());
+        result.put("healthLevel", analysis.getHealthLevel());
+        result.put("recommendations", analysis.getRecommendations());
+        result.put("createTime", analysis.getCreateTime());
+        
+        // 查询硬盘信息并添加diskModel字段
+        Optional<Disk> diskOpt = diskDAO.findById(analysis.getDiskId());
+        if (diskOpt.isPresent()) {
+            Disk disk = diskOpt.get();
+            String diskModel = String.format("%s %s", 
+                disk.getBrand() != null ? disk.getBrand() : "", 
+                disk.getModel() != null ? disk.getModel() : "").trim();
+            if (disk.getSerialNumber() != null && !disk.getSerialNumber().isEmpty()) {
+                diskModel = String.format("%s (%s)", diskModel, disk.getSerialNumber()).trim();
+            }
+            if (diskModel.isEmpty()) {
+                diskModel = "Disk " + disk.getId();
+            }
+            result.put("diskModel", diskModel);
+        } else {
+            result.put("diskModel", "Disk " + analysis.getDiskId());
+        }
+        
+        return result;
     }
 
     /**
