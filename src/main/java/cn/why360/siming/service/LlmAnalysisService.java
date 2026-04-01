@@ -187,7 +187,8 @@ public class LlmAnalysisService {
         // 获取当前配置并构建提示词
         LlmConfig config = getCurrentConfig();
         String prompt = buildPrompt(config, disk, startTime, endTime, capacityRecords, smartRecords);
-        logger.debug("Built analysis prompt for disk {}: {} characters", disk.getId(), prompt.length());
+        logger.info("=== LLM Analysis Prompt for disk {} ===\n{}", disk.getId(), prompt);
+        logger.info("=== End of LLM Prompt, total {} characters ===", prompt.length());
 
         // 调用大模型
         String response = callLlm(prompt, config);
@@ -359,7 +360,7 @@ public class LlmAnalysisService {
 
         sj.add("");
         sj.add("说明：");
-        sj.add("- Data_Units_Read / Data_Units_Written：每单位 = 1 个扇区 = 512字节，可直接累积计算总读写量");
+        sj.add("- Data_Units_Read / Data_Units_Written：每单位 = 1000 个扇区 = 512KB，可直接累积计算总读写量");
         sj.add("- Reallocated_Sector_Ct / Current_Pending_Sector / Offline_Uncorrectable：数值越高表示坏道越多");
         sj.add("- 对于累积计数器（Power_On_Hours、Data_Units_Written、Total_LBAs_Written等），增量即为对应时间范围内的变化");
 
@@ -485,7 +486,8 @@ public class LlmAnalysisService {
                     .getMessage()
                     .getContent();
 
-            logger.info("Received response from LLM, {} characters", response.length());
+            logger.info("=== LLM Response received, {} characters ===\n{}", response.length(), response);
+            logger.info("=== End of LLM Response ===");
             return response;
         } catch (Exception e) {
             logger.error("Failed to call LLM API", e);
