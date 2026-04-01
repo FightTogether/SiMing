@@ -37,3 +37,4 @@ config.yaml
 config.yml
 application.properties
 application.yml
+/data/

@@ -134,6 +134,7 @@ public class DatabaseManager {
              Statement stmt = conn.createStatement()) {
 
             for (String sql : createTables) {
+                logger.debug("Executing DDL SQL: {}", sql);
                 stmt.execute(sql);
             }
             

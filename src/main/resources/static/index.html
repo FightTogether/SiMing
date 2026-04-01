@@ -79,7 +79,6 @@
 
     <div class='tabs'>
         <div class='tab active' onclick='switchTab("disks")'>硬盘监控</div>
-        <div class='tab' onclick='switchTab("analyses")'>分析历史</div>
         <div class='tab' onclick='switchTab("config")'>大模型配置</div>
     </div>
 
@@ -87,13 +86,6 @@
         <div class='card'>
             <h2>监控硬盘列表</h2>
             <div id='disks-table'>加载中...</div>
-        </div>
-    </div>
-
-    <div id='analyses' class='tab-content'>
-        <div class='card'>
-            <h2>AI分析历史</h2>
-            <div id='analyses-list'>加载中...</div>
         </div>
     </div>
 
@@ -119,7 +111,6 @@ function switchTab(tabName) {
     event.target.classList.add('active');
     document.getElementById(tabName).classList.add('active');
     if (tabName === 'disks') loadDisks();
-    if (tabName === 'analyses') loadAnalyses();
     if (tabName === 'config') loadConfig();
 }
 
@@ -147,7 +138,10 @@ async function loadAnalyses() {
     const analyses = await res.json();
     let html = `<table><tr><th>硬盘</th><th>时间范围</th><th>创建时间</th><th>操作</th></tr>`;
     analyses.forEach(a => {
-        html += `<tr><td>${a.diskModel}</td><td>${a.startTime} ~ ${a.endTime}</td><td>${a.createdAt}</td><td><button class='btn' onclick='showAnalysisResult(${a.id})'>查看结果</button></td></tr>`;
+        const startTimeStr = formatDateTime(a.startTime);
+        const endTimeStr = formatDateTime(a.endTime);
+        const createdAtStr = formatDateTime(a.createTime);
+        html += `<tr><td>${a.diskModel}</td><td>${startTimeStr} ~ ${endTimeStr}</td><td>${createdAtStr}</td><td><button class='btn' onclick='showAnalysisResultMarkdown(${a.id})'>查看结果</button></td></tr>`;
     });
     html += `</table>`;
     document.getElementById('analyses-list').innerHTML = html;
@@ -206,15 +200,18 @@ async function showDiskAnalysisHistory(diskId) {
     } else {
         html += `<table><tr><th>时间范围</th><th>创建时间</th><th>操作</th></tr>`;
         analyses.forEach(a => {
-            html += `<tr><td>${a.startTime} ~ ${a.endTime}</td><td>${a.createdAt}</td><td><button class='btn' onclick='showAnalysisResultMarkdown(${a.id})'>查看结果</button></td></tr>`;
+            const startTimeStr = formatDateTime(a.startTime);
+            const endTimeStr = formatDateTime(a.endTime);
+            const createdAtStr = formatDateTime(a.createTime);
+            html += `<tr><td>${startTimeStr} ~ ${endTimeStr}</td><td>${createdAtStr}</td><td><button class='btn' onclick='showAnalysisResultMarkdown(${a.id})'>查看结果</button></td></tr>`;
         });
         html += `</table>`;
     }
     html += `<div style="margin-top: 15px;">
-        <button class='btn btn-success' onclick='startNewAnalysis(${diskId})'>开始新分析（最近30天）</button>
+        <button class='btn btn-success' onclick='startNewAnalysis(${diskId})'>开始AI分析（历史趋势对比）</button>
         <button class='btn' onclick='closeModal()'>取消</button>
     </div>`;
-    
+
     showModal('AI分析历史', html);
 }
 
@@ -227,7 +224,7 @@ async function startNewAnalysis(diskId) {
         const res = await fetch('/api/analyze', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({diskId: diskId, days: 30})
+            body: JSON.stringify({diskId: diskId})
         });
         const result = await res.json();
         if (result.success) {
@@ -271,10 +268,10 @@ async function showAnalysisResultMarkdown(analysisId) {
     const res = await fetch(`/api/analyses/${analysisId}`);
     const analysis = await res.json();
     const md = window.markdownit();
-    const htmlContent = md.render(analysis.result);
+    const htmlContent = md.render(analysis.analysisContent);
     const startTimeStr = formatDateTime(analysis.startTime);
     const endTimeStr = formatDateTime(analysis.endTime);
-    const createdAtStr = formatDateTime(analysis.createdAt);
+    const createdAtStr = formatDateTime(analysis.createTime);
     const html = `
         <h2>分析结果</h2>
         <p><strong>硬盘:</strong> ${analysis.diskModel}<br>
@@ -335,14 +332,14 @@ async function showDiskDetail(diskId) {
     function formatAttributeValue(attr) {
         const key = attr.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
         let rawValue = attr.rawValue;
-        
+
         if (attr.rawValue !== null && attr.rawValue !== '') {
             const rawNum = parseInt(attr.rawValue);
             if (!isNaN(rawNum)) {
-            if (key.includes('data_units_')) {
-                // NVMe: data_units_read/data_units_written 每个单位 = 1000 个扇区 = 512KB
-                const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
-                rawValue = `${tb} TB`;
+                if (key.includes('data_units_')) {
+                    // NVMe: data_units_read/data_units_written 每个单位 = 1000 个扇区 = 512KB
+                    const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
+                    rawValue = `${tb} TB`;
                 } else if (key.includes('total_host_reads') || key.includes('total_host_writes') || key.includes('total_lbas_read') || key.includes('total_lbas_written')) {
                     // 每个单位 = 1个扇区 = 512字节
                     const tb = (rawNum * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
@@ -624,18 +621,11 @@ async function showDiskDetail(diskId) {
         html += `</table></div></div>`;
     }
 
-    // 获取最新AI分析结果
-    html += `<div style="margin-top: 20px;"><h3>AI分析结果</h3>`;
-    if (data.analysis && data.analysis.length > 0) {
-        const latestAnalysis = data.analysis[data.analysis.length - 1];
-        html += `<div class='analysis-result'>${escapeHtml(latestAnalysis.result)}</div>
-        <p><small>分析时间: ${latestAnalysis.createdAt.replace('T', ' ')}</small></p>`;
-    } else {
-        html += `<p>暂无AI分析结果</p>`;
-    }
-    html += `</div>`;
-
     // 绘制温度变化图表
+    let hasTemperatureChart = false;
+    let temperatureLabels = [];
+    let temperatureData = [];
+    
     if (data.smart.length > 1) {
         const temps = [];
         const labels = [];
@@ -643,6 +633,10 @@ async function showDiskDetail(diskId) {
         // 每天只取一个点，避免过多数据
         const seenDays = new Set();
         data.smart.forEach(s => {
+            if (!s.recordTime) {
+                index++;
+                return;
+            }
             const date = s.recordTime.split('T')[0];
             if (!seenDays.has(date) || index === data.smart.length - 1) {
                 seenDays.add(date);
@@ -656,6 +650,9 @@ async function showDiskDetail(diskId) {
         });
 
         if (temps.length > 1) {
+            hasTemperatureChart = true;
+            temperatureLabels = labels;
+            temperatureData = temps;
             html += `
             <div style="margin-top: 20px;">
                 <h3>温度历史变化</h3>
@@ -669,29 +666,31 @@ async function showDiskDetail(diskId) {
     showModal('硬盘详情', html);
 
     // 绘制图表，如果有温度数据的话
-    if (typeof temps !== 'undefined' && temps.length > 1) {
-        const ctx = document.getElementById('temp-chart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '温度 (°C)',
-                    data: temps,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: false
+    if (hasTemperatureChart) {
+        setTimeout(() => {
+            const ctx = document.getElementById('temp-chart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: temperatureLabels,
+                    datasets: [{
+                        label: '温度 (°C)',
+                        data: temperatureData,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
                     }
                 }
-            }
-        });
+            });
+        }, 100);
     }
 }
 

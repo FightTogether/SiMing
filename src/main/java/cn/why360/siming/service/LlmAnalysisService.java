@@ -216,7 +216,65 @@ public class LlmAnalysisService {
     }
 
     /**
-     * 构建提示词
+     * 分析硬盘健康趋势：获取四个时间点（当前、7天前、30天前、365天前）的最新数据进行对比分析
+     */
+    public AnalysisResult analyzeDiskTrend(Disk disk) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("LLM service is not configured, please check your API key in config file");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime sevenDaysAgo = now.minusDays(7);
+        LocalDateTime thirtyDaysAgo = now.minusDays(30);
+        LocalDateTime threeHundredSixtyFiveDaysAgo = now.minusDays(365);
+
+        // 获取四个时间点的容量数据（每个时间点取最新的一条）
+        CapacityRecord capacityNow = capacityRecordDAO.findLatestBefore(disk.getId(), now);
+        CapacityRecord capacity7d = capacityRecordDAO.findLatestBefore(disk.getId(), sevenDaysAgo);
+        CapacityRecord capacity30d = capacityRecordDAO.findLatestBefore(disk.getId(), thirtyDaysAgo);
+        CapacityRecord capacity365d = capacityRecordDAO.findLatestBefore(disk.getId(), threeHundredSixtyFiveDaysAgo);
+
+        // 获取四个时间点的SMART数据（每个时间点取完整的属性集合）
+        List<SmartRecord> smartNow = smartRecordDAO.findLatestAttributesBefore(disk.getId(), now);
+        List<SmartRecord> smart7d = smartRecordDAO.findLatestAttributesBefore(disk.getId(), sevenDaysAgo);
+        List<SmartRecord> smart30d = smartRecordDAO.findLatestAttributesBefore(disk.getId(), thirtyDaysAgo);
+        List<SmartRecord> smart365d = smartRecordDAO.findLatestAttributesBefore(disk.getId(), threeHundredSixtyFiveDaysAgo);
+
+        // 获取当前配置并构建提示词
+        LlmConfig config = getCurrentConfig();
+        String prompt = buildTrendPrompt(config, disk,
+                capacityNow, capacity7d, capacity30d, capacity365d,
+                smartNow, smart7d, smart30d, smart365d);
+        logger.info("=== LLM Trend Analysis Prompt for disk {} ===\n{}", disk.getId(), prompt);
+        logger.info("=== End of LLM Prompt, total {} characters ===", prompt.length());
+
+        // 调用大模型
+        String response = callLlm(prompt, config);
+        if (response == null || response.isEmpty()) {
+            throw new RuntimeException("Failed to get response from LLM");
+        }
+
+        // 解析结果，提取评分和建议
+        Integer healthScore = extractHealthScore(response);
+        String healthLevel = extractHealthLevel(response, healthScore);
+        String recommendations = extractRecommendations(response);
+
+        // 保存分析结果
+        AnalysisResult result = AnalysisResult.builder()
+                .diskId(disk.getId())
+                .startTime(threeHundredSixtyFiveDaysAgo)
+                .endTime(now)
+                .analysisContent(response)
+                .healthScore(healthScore)
+                .healthLevel(healthLevel)
+                .recommendations(recommendations)
+                .build();
+
+        return analysisResultDAO.save(result);
+    }
+
+    /**
+     * 构建传统区间分析提示词
      */
     private String buildPrompt(LlmConfig config, Disk disk, LocalDateTime startTime, LocalDateTime endTime,
                                 List<CapacityRecord> capacityRecords, List<SmartRecord> smartRecords) {
@@ -248,6 +306,257 @@ public class LlmAnalysisService {
         }
 
         return template;
+    }
+
+    /**
+     * 构建趋势分析提示词（基于四个时间点对比）
+     */
+    private String buildTrendPrompt(LlmConfig config, Disk disk,
+            CapacityRecord capacityNow, CapacityRecord capacity7d, CapacityRecord capacity30d, CapacityRecord capacity365d,
+            List<SmartRecord> smartNow, List<SmartRecord> smart7d, List<SmartRecord> smart30d, List<SmartRecord> smart365d) {
+        String template = config.getPromptTemplate();
+        if (template == null || template.isEmpty()) {
+            template = getDefaultTrendPromptTemplate();
+        }
+
+        Map<String, String> replacements = new HashMap<>();
+        replacements.put("brand", disk.getBrand() != null ? disk.getBrand() : "Unknown");
+        replacements.put("model", disk.getModel() != null ? disk.getModel() : "Unknown");
+        replacements.put("serial", disk.getSerialNumber() != null ? disk.getSerialNumber() : "Unknown");
+        replacements.put("serialNumber", disk.getSerialNumber() != null ? disk.getSerialNumber() : "Unknown");
+        replacements.put("totalSize", String.format("%.2f", disk.getTotalCapacityGB()));
+        replacements.put("total_capacity_gb", String.format("%.2f", disk.getTotalCapacityGB()));
+        replacements.put("is_ssd", disk.isSSD() ? "SSD" : "HDD");
+
+        // 格式化容量数据
+        replacements.put("capacity_data", formatFourPointCapacityData(capacityNow, capacity7d, capacity30d, capacity365d));
+        replacements.put("capacityData", replacements.get("capacity_data"));
+
+        // 格式化SMART数据
+        replacements.put("smart_data", formatFourPointSmartData(smartNow, smart7d, smart30d, smart365d));
+        replacements.put("smartData", replacements.get("smart_data"));
+
+        // 替换占位符 - 同时兼容 {{xxx}} 和 {xxx} 两种格式（兼容新旧模板）
+        for (Map.Entry<String, String> entry : replacements.entrySet()) {
+            template = template.replace("{{" + entry.getKey() + "}}", entry.getValue());
+            template = template.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
+
+        return template;
+    }
+
+    /**
+     * 格式化四个时间点的容量数据
+     */
+    private String formatFourPointCapacityData(CapacityRecord now, CapacityRecord d7, CapacityRecord d30, CapacityRecord d365) {
+        StringJoiner sj = new StringJoiner("\n");
+        sj.add("时间点 | 记录时间 | 已用容量(GB) | 可用容量(GB) | 使用率(%)");
+        sj.add("------|----------|--------------|--------------|---------");
+
+        if (now != null) {
+            double usedGB = (double) now.getUsedCapacity() / (1024 * 1024 * 1024);
+            double availableGB = (double) now.getAvailableCapacity() / (1024 * 1024 * 1024);
+            sj.add(String.format("当前 | %s | %.2f | %.2f | %.1f",
+                    now.getRecordTime().format(DATE_FORMATTER), usedGB, availableGB, now.getUsagePercent()));
+        } else {
+            sj.add("当前 | 无数据 | - | - | -");
+        }
+
+        if (d7 != null) {
+            double usedGB = (double) d7.getUsedCapacity() / (1024 * 1024 * 1024);
+            double availableGB = (double) d7.getAvailableCapacity() / (1024 * 1024 * 1024);
+            sj.add(String.format("7天前 | %s | %.2f | %.2f | %.1f",
+                    d7.getRecordTime().format(DATE_FORMATTER), usedGB, availableGB, d7.getUsagePercent()));
+        } else {
+            sj.add("7天前 | 无数据 | - | - | -");
+        }
+
+        if (d30 != null) {
+            double usedGB = (double) d30.getUsedCapacity() / (1024 * 1024 * 1024);
+            double availableGB = (double) d30.getAvailableCapacity() / (1024 * 1024 * 1024);
+            sj.add(String.format("30天前 | %s | %.2f | %.2f | %.1f",
+                    d30.getRecordTime().format(DATE_FORMATTER), usedGB, availableGB, d30.getUsagePercent()));
+        } else {
+            sj.add("30天前 | 无数据 | - | - | -");
+        }
+
+        if (d365 != null) {
+            double usedGB = (double) d365.getUsedCapacity() / (1024 * 1024 * 1024);
+            double availableGB = (double) d365.getAvailableCapacity() / (1024 * 1024 * 1024);
+            sj.add(String.format("365天前 | %s | %.2f | %.2f | %.1f",
+                    d365.getRecordTime().format(DATE_FORMATTER), usedGB, availableGB, d365.getUsagePercent()));
+        } else {
+            sj.add("365天前 | 无数据 | - | - | -");
+        }
+
+        return sj.toString();
+    }
+
+    /**
+     * 格式化四个时间点的SMART数据
+     */
+    private String formatFourPointSmartData(List<SmartRecord> now, List<SmartRecord> d7, List<SmartRecord> d30, List<SmartRecord> d365) {
+        if (now.isEmpty() && d7.isEmpty() && d30.isEmpty() && d365.isEmpty()) {
+            return "No SMART data available";
+        }
+
+        // 只关注关键属性
+        List<String> importantAttributes = List.of(
+                "Reallocated_Sector_Ct",
+                "Current_Pending_Sector",
+                "Offline_Uncorrectable",
+                "Reallocated_Event_Count",
+                "Temperature_Celsius",
+                "Airflow_Temperature_Cel",
+                "Power_On_Hours",
+                "Power_Cycle_Count",
+                "Media_Errors",
+                "Total_LBAs_Written",
+                "Data_Units_Written",
+                "Data_Units_Read",
+                "Percentage_Used",
+                "Host_Writes",
+                "Host_Reads",
+                "Host_Write_Commands",
+                "Host_Read_Commands",
+                "Available_Spare",
+                "Percent_Life_Remaining",
+                "Endurance_Remaining"
+        );
+
+        // 收集所有出现过的关键属性名称
+        java.util.Set<String> allAttrNames = new java.util.HashSet<>();
+        for (SmartRecord r : now) {
+            String name = r.getAttributeName();
+            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
+                allAttrNames.add(name);
+            }
+        }
+        for (SmartRecord r : d7) {
+            String name = r.getAttributeName();
+            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
+                allAttrNames.add(name);
+            }
+        }
+        for (SmartRecord r : d30) {
+            String name = r.getAttributeName();
+            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
+                allAttrNames.add(name);
+            }
+        }
+        for (SmartRecord r : d365) {
+            String name = r.getAttributeName();
+            if (importantAttributes.stream().anyMatch(imp -> name.contains(imp) || imp.contains(name))) {
+                allAttrNames.add(name);
+            }
+        }
+
+        if (allAttrNames.isEmpty()) {
+            return "No important SMART attributes found";
+        }
+
+        StringJoiner sj = new StringJoiner("\n");
+        sj.add("以下是四个时间点的SMART关键属性数据，用于对比分析健康变化趋势：");
+        sj.add("");
+        sj.add("属性名称 | 365天前 | 30天前 | 7天前 | 当前 | 阈值");
+        sj.add("--------|---------|-------|------|------|------");
+
+        // 查找每个属性在不同时间点的值
+        for (String attrName : allAttrNames) {
+            SmartRecord r365 = findAttributeByName(d365, attrName);
+            SmartRecord r30 = findAttributeByName(d30, attrName);
+            SmartRecord r7 = findAttributeByName(d7, attrName);
+            SmartRecord rNow = findAttributeByName(now, attrName);
+
+            Long v365 = r365 != null ? r365.getRawValue() : null;
+            Long v30 = r30 != null ? r30.getRawValue() : null;
+            Long v7 = r7 != null ? r7.getRawValue() : null;
+            Long vNow = rNow != null ? rNow.getRawValue() : null;
+            Integer threshold = rNow != null ? rNow.getThreshold() : null;
+            if (threshold == null && r30 != null) threshold = r30.getThreshold();
+            if (threshold == null && r7 != null) threshold = r7.getThreshold();
+            if (threshold == null && r365 != null) threshold = r365.getThreshold();
+
+            String s365 = v365 != null ? String.valueOf(v365) : "-";
+            String s30 = v30 != null ? String.valueOf(v30) : "-";
+            String s7 = v7 != null ? String.valueOf(v7) : "-";
+            String sNow = vNow != null ? String.valueOf(vNow) : "-";
+            String sThreshold = threshold != null ? String.valueOf(threshold) : "-";
+
+            sj.add(String.format("%s | %s | %s | %s | %s | %s",
+                    attrName, s365, s30, s7, sNow, sThreshold));
+        }
+
+        sj.add("");
+        sj.add("说明：");
+        sj.add("- Data_Units_Read / Data_Units_Written：每单位 = 1000 个扇区 = 512KB，可直接计算增量");
+        sj.add("- Reallocated_Sector_Ct / Current_Pending_Sector / Offline_Uncorrectable：数值越高表示坏道越多");
+        sj.add("- Percentage_Used：已用寿命百分比，SSD专用，数值越大寿命剩余越少");
+        sj.add("- 通过对比四个时间点计算增量，可以得到每天/每周/每月的平均消耗速度");
+
+        // 添加温度统计（如果有数据）
+        Integer tNow = null, t7 = null, t30 = null, t365 = null;
+        for (SmartRecord r : now) { if (r.getAttributeName().contains("Temperature") && r.getTemperature() != null) tNow = r.getTemperature(); }
+        for (SmartRecord r : d7) { if (r.getAttributeName().contains("Temperature") && r.getTemperature() != null) t7 = r.getTemperature(); }
+        for (SmartRecord r : d30) { if (r.getAttributeName().contains("Temperature") && r.getTemperature() != null) t30 = r.getTemperature(); }
+        for (SmartRecord r : d365) { if (r.getAttributeName().contains("Temperature") && r.getTemperature() != null) t365 = r.getTemperature(); }
+        if (tNow != null || t7 != null || t30 != null || t365 != null) {
+            sj.add("\n温度数据：");
+            sj.add("时间点 | 温度(°C)");
+            sj.add("------|--------");
+            if (t365 != null) sj.add(String.format("365天前 | %d", t365)); else sj.add("365天前 | -");
+            if (t30 != null) sj.add(String.format("30天前 | %d", t30)); else sj.add("30天前 | -");
+            if (t7 != null) sj.add(String.format("7天前 | %d", t7)); else sj.add("7天前 | -");
+            if (tNow != null) sj.add(String.format("当前 | %d", tNow)); else sj.add("当前 | -");
+        }
+
+        return sj.toString();
+    }
+
+    /**
+     * 根据属性名称查找记录
+     */
+    private SmartRecord findAttributeByName(List<SmartRecord> records, String attrName) {
+        if (records == null || records.isEmpty()) return null;
+        for (SmartRecord r : records) {
+            if (r.getAttributeName().equals(attrName)) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 获取默认趋势分析提示词模板
+     */
+    public static String getDefaultTrendPromptTemplate() {
+        return "你是一位专业的存储硬件健康分析师，请根据以下四个时间点的硬盘监控数据对比分析硬盘的健康状况：\n\n" +
+                "硬盘基本信息：\n" +
+                "品牌：{{brand}}\n" +
+                "型号：{{model}}\n" +
+                "序列号：{{serial}}\n" +
+                "总容量：{{totalSize}} GB\n" +
+                "类型：{{is_ssd}}\n\n" +
+                "容量使用数据（四个时间点对比）：\n" +
+                "{{capacityData}}\n\n" +
+                "SMART关键属性数据（四个时间点对比）：\n" +
+                "{{smartData}}\n\n" +
+                "请完成以下分析：\n" +
+                "1. 通过对比365天前、30天前、7天前和当前的容量使用数据，计算容量消耗速度：\n" +
+                "   - 每天平均增加多少已用容量\n" +
+                "   - 按照当前速度，预计多久会占满整个硬盘\n" +
+                "2. 通过对比SMART属性计算消耗速度：\n" +
+                "   - 对于SSD：计算每天平均写入量增长(PBW)，百分比寿命消耗速度\n" +
+                "   - 对于HDD：计算坏块数量增长趋势，是否在加速增长\n" +
+                "   - 通电时间累计速度是否正常\n" +
+                "   - 温度是否有明显升高\n" +
+                "3. 判断硬盘健康劣化速度：\n" +
+                "   - 是否在正常范围内\n" +
+                "   - 是否出现快速劣化迹象\n" +
+                "4. 综合评价硬盘当前健康状况\n" +
+                "5. 给出明确建议：是否需要备份数据，是否需要提前更换硬盘\n" +
+                "6. 最后给出一个0-100的健康评分\n\n" +
+                "请用中文给出清晰专业的分析结论，计算过程简单说明即可。";
     }
 
     /**
@@ -607,6 +916,14 @@ public class LlmAnalysisService {
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusDays(days);
         AnalysisResult result = analyzeDisk(disk, startTime, endTime);
+        return result.getAnalysisContent();
+    }
+
+    /**
+     * 趋势分析（便捷方法，用于API调用）
+     */
+    public String analyzeDiskTrendAPI(Disk disk) {
+        AnalysisResult result = analyzeDiskTrend(disk);
         return result.getAnalysisContent();
     }
 }

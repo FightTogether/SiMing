@@ -102,6 +102,34 @@ public class CapacityRecordDAO {
     }
 
     /**
+     * 获取指定硬盘在截止时间之前最新的一条容量记录
+     * 用于四个时间点对比分析
+     */
+    public CapacityRecord findLatestBefore(Long diskId, LocalDateTime beforeTime) {
+        String sql = "SELECT * FROM capacity_records " +
+                "WHERE disk_id = ? AND record_time <= ? " +
+                "ORDER BY record_time DESC " +
+                "LIMIT 1";
+
+        try (Connection conn = databaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, diskId);
+            stmt.setTimestamp(2, Timestamp.valueOf(beforeTime));
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapResultSetToRecord(rs);
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Failed to query latest capacity before {} for disk id {}", beforeTime, diskId, e);
+        }
+
+        return null;
+    }
+
+    /**
      * 获取指定硬盘的所有容量记录
      */
     public List<CapacityRecord> findByDiskId(Long diskId) {

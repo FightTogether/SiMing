@@ -142,14 +142,13 @@ public class AdminController {
     }
 
     /**
-     * 触发AI分析
+     * 触发AI分析（四时间点趋势分析）
      */
     @PostMapping("/analyze")
     public Map<String, Object> triggerAnalysis(@RequestBody Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
         try {
             long diskId = ((Number) request.get("diskId")).longValue();
-            int days = ((Number) request.get("days")).intValue();
 
             Optional<Disk> diskOpt = diskDAO.findById(diskId);
             if (diskOpt.isEmpty()) {
@@ -158,7 +157,7 @@ public class AdminController {
                 return result;
             }
 
-            String analysisResult = llmService.analyzeDiskHistory(diskOpt.get(), days);
+            String analysisResult = llmService.analyzeDiskTrendAPI(diskOpt.get());
             result.put("success", true);
             result.put("result", analysisResult);
             return result;

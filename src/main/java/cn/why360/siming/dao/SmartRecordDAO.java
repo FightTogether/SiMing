@@ -146,6 +146,41 @@ public class SmartRecordDAO {
     }
 
     /**
+     * 获取指定硬盘在截止时间之前的最新SMART属性集合（每个属性取最新一条）
+     * 用于四个时间点对比分析
+     */
+    public List<SmartRecord> findLatestAttributesBefore(Long diskId, LocalDateTime beforeTime) {
+        List<SmartRecord> records = new ArrayList<>();
+        String sql = "SELECT sr.* FROM smart_records sr " +
+                "INNER JOIN ( " +
+                "  SELECT attribute_id, MAX(record_time) as max_time " +
+                "  FROM smart_records " +
+                "  WHERE disk_id = ? AND record_time <= ? " +
+                "  GROUP BY attribute_id " +
+                ") latest ON sr.attribute_id = latest.attribute_id AND sr.record_time = latest.max_time " +
+                "WHERE sr.disk_id = ? " +
+                "ORDER BY sr.attribute_id";
+
+        try (Connection conn = databaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, diskId);
+            stmt.setTimestamp(2, Timestamp.valueOf(beforeTime));
+            stmt.setLong(3, diskId);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    records.add(mapResultSetToRecord(rs));
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Failed to query latest SMART attributes before {} for disk id {}", beforeTime, diskId, e);
+        }
+
+        return records;
+    }
+
+    /**
      * 获取指定硬盘的所有SMART记录
      */
     public List<SmartRecord> findByDiskId(Long diskId) {
