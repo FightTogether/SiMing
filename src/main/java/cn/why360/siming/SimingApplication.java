@@ -60,7 +60,8 @@ public class SimingApplication {
                         diskDAO,
                         capacityService,
                         smartReaderService,
-                        context.getBean(SmartRecordDAO.class));
+                        context.getBean(SmartRecordDAO.class),
+                        llmAnalysisService);
                 startScheduler(schedulerManager);
                 logger.info("Local mode: disk discovery and monitoring scheduler started");
             } else {

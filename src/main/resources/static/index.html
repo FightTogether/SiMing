@@ -42,8 +42,33 @@
         .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; padding: 30px; border-radius: 8px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
         .modal-close { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; border: none; background: none; }
         .chart-container { position: relative; height: 300px; margin: 20px 0; }
+        /* Markdown 样式 */
+        .markdown-content h1, .markdown-content h2, .markdown-content h3, 
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+            margin: 15px 0 10px 0;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        .markdown-content h1 { font-size: 1.8em; }
+        .markdown-content h2 { font-size: 1.6em; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .markdown-content h3 { font-size: 1.4em; }
+        .markdown-content h4 { font-size: 1.2em; }
+        .markdown-content p { margin-bottom: 10px; }
+        .markdown-content ul, .markdown-content ol { margin: 10px 0 10px 2em; }
+        .markdown-content li { margin-bottom: 5px; }
+        .markdown-content code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
+        .markdown-content pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .markdown-content pre code { background: none; padding: 0; }
+        .markdown-content blockquote { border-left: 4px solid #ddd; padding-left: 15px; margin: 10px 0; color: #666; }
+        .markdown-content table { border-collapse: collapse; }
+        .markdown-content table th, .markdown-content table td { 
+            border: 1px solid #ddd; 
+            padding: 6px 12px; 
+        }
+        .markdown-content table th { background: #f8f9fa; font-weight: 600; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.0.0/dist/markdown-it.min.js"></script>
 </head>
 <body>
 <div class='container'>
@@ -167,8 +192,55 @@ async function saveConfig(e) {
 }
 
 function triggerAnalysis(diskId) {
-    // 默认分析最近30天的数据，不需要用户输入
-    analyzeDisk(diskId, 30);
+    // 弹出modal显示该硬盘的历史分析结果列表（倒序）
+    showDiskAnalysisHistory(diskId);
+}
+
+async function showDiskAnalysisHistory(diskId) {
+    const res = await fetch(`/api/disk/${diskId}/analyses`);
+    const analyses = await res.json();
+    
+    let html = `<h3>历史分析结果</h3>`;
+    if (analyses.length === 0) {
+        html += `<p>暂无分析结果，点击下方按钮开始新分析</p>`;
+    } else {
+        html += `<table><tr><th>时间范围</th><th>创建时间</th><th>操作</th></tr>`;
+        analyses.forEach(a => {
+            html += `<tr><td>${a.startTime} ~ ${a.endTime}</td><td>${a.createdAt}</td><td><button class='btn' onclick='showAnalysisResultMarkdown(${a.id})'>查看结果</button></td></tr>`;
+        });
+        html += `</table>`;
+    }
+    html += `<div style="margin-top: 15px;">
+        <button class='btn btn-success' onclick='startNewAnalysis(${diskId})'>开始新分析（最近30天）</button>
+        <button class='btn' onclick='closeModal()'>取消</button>
+    </div>`;
+    
+    showModal('AI分析历史', html);
+}
+
+async function startNewAnalysis(diskId) {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '分析中...';
+    try {
+        const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({diskId: diskId, days: 30})
+        });
+        const result = await res.json();
+        if (result.success) {
+            closeModal();
+            showAnalysisResultMarkdownText(result.result);
+            loadAnalyses();
+        } else {
+            alert('分析失败: ' + result.error);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
 }
 
 async function analyzeDisk(diskId, days) {
@@ -184,7 +256,7 @@ async function analyzeDisk(diskId, days) {
         });
         const result = await res.json();
         if (result.success) {
-            showModal('分析完成', `<div class='analysis-result'>${escapeHtml(result.result)}</div>`);
+            showAnalysisResultMarkdownText(result.result);
             loadAnalyses();
         } else {
             alert('分析失败: ' + result.error);
@@ -193,6 +265,31 @@ async function analyzeDisk(diskId, days) {
         btn.disabled = false;
         btn.textContent = originalText;
     }
+}
+
+async function showAnalysisResultMarkdown(analysisId) {
+    const res = await fetch(`/api/analyses/${analysisId}`);
+    const analysis = await res.json();
+    const md = window.markdownit();
+    const htmlContent = md.render(analysis.result);
+    const html = `
+        <h2>分析结果</h2>
+        <p><strong>硬盘:</strong> ${analysis.diskModel}<br>
+        <strong>时间范围:</strong> ${analysis.startTime} ~ ${analysis.endTime}<br>
+        <strong>创建时间:</strong> ${analysis.createdAt}</p>
+        <div class='markdown-content'>${htmlContent}</div>
+    `;
+    showModal('分析结果', html);
+}
+
+function showAnalysisResultMarkdownText(content) {
+    const md = window.markdownit();
+    const htmlContent = md.render(content);
+    const html = `
+        <h2>分析结果</h2>
+        <div class='markdown-content'>${htmlContent}</div>
+    `;
+    showModal('分析结果', html);
 }
 
 async function showDiskDetail(diskId) {
@@ -239,10 +336,10 @@ async function showDiskDetail(diskId) {
         if (attr.rawValue !== null && attr.rawValue !== '') {
             const rawNum = parseInt(attr.rawValue);
             if (!isNaN(rawNum)) {
-                if (key.includes('data_units_')) {
-                    // NVMe: data_units_read/data_units_written 每个单位 = 1000个扇区 = 512KB
-                    const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
-                    rawValue = `${tb} TB`;
+            if (key.includes('data_units_')) {
+                // NVMe: data_units_read/data_units_written 每个单位 = 1000 个扇区 = 512KB
+                const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
+                rawValue = `${tb} TB`;
                 } else if (key.includes('total_host_reads') || key.includes('total_host_writes') || key.includes('total_lbas_read') || key.includes('total_lbas_written')) {
                     // 每个单位 = 1个扇区 = 512字节
                     const tb = (rawNum * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
@@ -493,7 +590,7 @@ async function showDiskDetail(diskId) {
                 const rawNum = parseInt(a.rawValue);
                 if (!isNaN(rawNum)) {
                     if (key.includes('data_units_')) {
-                        // NVMe: data_units_read/data_units_written 每个单位 = 1000个扇区 = 512KB
+                        // NVMe: data_units_read/data_units_written 每个单位 = 1000 个扇区 = 512KB
                         const tb = (rawNum * 1000 * 512 / 1024 / 1024 / 1024 / 1024).toFixed(2);
                         rawValue = `${tb} TB`;
                     } else if (key.includes('host_read_commands') || key.includes('host_write_commands')) {

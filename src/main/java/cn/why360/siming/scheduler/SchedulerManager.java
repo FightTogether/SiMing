@@ -6,6 +6,7 @@ import cn.why360.siming.dao.DiskDAO;
 import cn.why360.siming.dao.SmartRecordDAO;
 import cn.why360.siming.entity.Disk;
 import cn.why360.siming.service.CapacityMonitorService;
+import cn.why360.siming.service.LlmAnalysisService;
 import cn.why360.siming.service.SmartReaderService;
 import org.quartz.*;
 import org.quartz.impl.StdSchedulerFactory;
@@ -28,12 +29,13 @@ public class SchedulerManager {
                             DiskDAO diskDAO,
                             CapacityMonitorService capacityService,
                             SmartReaderService smartReaderService,
-                            SmartRecordDAO smartRecordDAO) throws SchedulerException {
+                            SmartRecordDAO smartRecordDAO,
+                            LlmAnalysisService llmAnalysisService) throws SchedulerException {
         this.monitorConfig = monitorConfig;
         this.diskDAO = diskDAO;
 
         // 初始化Job
-        DiskMonitorJob.init(diskDAO, capacityService, smartReaderService, smartRecordDAO);
+        DiskMonitorJob.init(diskDAO, capacityService, smartReaderService, smartRecordDAO, llmAnalysisService);
 
         // 创建调度器
         StdSchedulerFactory factory = new StdSchedulerFactory();

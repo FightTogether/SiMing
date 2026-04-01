@@ -78,6 +78,13 @@ public class AnalysisResultDAO {
     }
 
     /**
+     * 获取所有分析结果按创建时间倒序
+     */
+    public List<AnalysisResult> findAllByCreateTimeDesc() {
+        return findAll();
+    }
+
+    /**
      * 获取指定硬盘的所有分析结果
      */
     public List<AnalysisResult> findByDiskId(Long diskId) {
@@ -89,18 +96,25 @@ public class AnalysisResultDAO {
         try (Connection conn = databaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setLong(1, diskId);
+             stmt.setLong(1, diskId);
 
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    results.add(mapResultSetToResult(rs));
-                }
-            }
-        } catch (SQLException e) {
-            logger.error("Failed to query analysis results for disk id {}", diskId, e);
-        }
+             try (ResultSet rs = stmt.executeQuery()) {
+                 while (rs.next()) {
+                     results.add(mapResultSetToResult(rs));
+                 }
+             }
+         } catch (SQLException e) {
+             logger.error("Failed to query analysis results for disk id {}", diskId, e);
+         }
 
-        return results;
+         return results;
+     }
+
+    /**
+     * 获取指定硬盘的所有分析结果按创建时间倒序
+     */
+    public List<AnalysisResult> findByDiskIdOrderByCreateTimeDesc(Long diskId) {
+        return findByDiskId(diskId);
     }
 
     /**

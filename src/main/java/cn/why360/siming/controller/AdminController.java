@@ -118,7 +118,15 @@ public class AdminController {
      */
     @GetMapping("/analyses")
     public List<AnalysisResult> getAnalyses() {
-        return analysisDAO.findAll();
+        return analysisDAO.findAllByCreateTimeDesc();
+    }
+
+    /**
+     * 获取指定硬盘的分析历史列表（倒序展示）
+     */
+    @GetMapping("/disk/{diskId}/analyses")
+    public List<AnalysisResult> getDiskAnalyses(@PathVariable Long diskId) {
+        return analysisDAO.findByDiskIdOrderByCreateTimeDesc(diskId);
     }
 
     /**

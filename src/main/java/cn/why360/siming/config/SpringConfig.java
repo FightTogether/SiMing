@@ -89,7 +89,8 @@ public class SpringConfig {
     public SchedulerManager schedulerManager(SimingConfig config, DiskDAO diskDAO,
                                             CapacityMonitorService capacityService,
                                             SmartReaderService smartReaderService,
-                                            SmartRecordDAO smartRecordDAO) throws SchedulerException {
-        return new SchedulerManager(config.getMonitor(), diskDAO, capacityService, smartReaderService, smartRecordDAO);
+                                            SmartRecordDAO smartRecordDAO,
+                                            LlmAnalysisService llmAnalysisService) throws SchedulerException {
+        return new SchedulerManager(config.getMonitor(), diskDAO, capacityService, smartReaderService, smartRecordDAO, llmAnalysisService);
     }
 }
