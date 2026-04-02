@@ -92,6 +92,7 @@ CREATE TABLE disks (
 -- 容量监控记录表
 CREATE TABLE capacity_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL,
   disk_id INTEGER NOT NULL,
   filesystem TEXT,
   used_capacity INTEGER NOT NULL,
@@ -105,6 +106,7 @@ CREATE TABLE capacity_records (
 -- SMART监控记录表
 CREATE TABLE smart_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL,
   disk_id INTEGER NOT NULL,
   attribute_id INTEGER NOT NULL,
   attribute_name TEXT,

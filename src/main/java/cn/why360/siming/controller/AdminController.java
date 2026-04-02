@@ -75,46 +75,70 @@ public class AdminController {
         List<CapacityRecord> capacity = capacityDAO.findByDiskId(id);
         List<SmartRecord> allSmart = smartDAO.findByDiskId(id);
         
-        // 按照record_time分组，将同一时间采集的所有属性放在一起
-        Map<LocalDateTime, List<SmartRecord>> groupedByTime = new LinkedHashMap<>();
+        // 按照report_id分组，将同一批次采集的所有属性放在一起
+        Map<Long, List<SmartRecord>> groupedByReport = new LinkedHashMap<>();
+        Map<Long, LocalDateTime> reportTimeMap = new HashMap<>();
         for (SmartRecord record : allSmart) {
-            LocalDateTime time = record.getRecordTime();
-            groupedByTime.computeIfAbsent(time, k -> new ArrayList<>()).add(record);
+            Long reportId = record.getReportId();
+            groupedByReport.computeIfAbsent(reportId, k -> new ArrayList<>()).add(record);
+            // 记录时间（同一reportId时间相同）
+            if (!reportTimeMap.containsKey(reportId)) {
+                reportTimeMap.put(reportId, record.getRecordTime());
+            }
         }
         
-        // 转换为便于前端处理的格式
-        List<Map<String, Object>> groupedSmart = new ArrayList<>();
-        int index = 0;
-        for (Map.Entry<LocalDateTime, List<SmartRecord>> entry : groupedByTime.entrySet()) {
-            Map<String, Object> timeEntry = new HashMap<>();
-            timeEntry.put("recordId", index++);
-            timeEntry.put("timestamp", entry.getKey().toString().replace('T', ' '));
-            timeEntry.put("attributes", entry.getValue());
+        // 容量也按照report_id分组
+        Map<Long, List<CapacityRecord>> capacityByReport = new LinkedHashMap<>();
+        for (CapacityRecord record : capacity) {
+            Long reportId = record.getReportId();
+            capacityByReport.computeIfAbsent(reportId, k -> new ArrayList<>()).add(record);
+        }
+        
+        // 转换为便于前端处理的格式（倒序排列，最新的在前面）
+        List<Map<String, Object>> groupedData = new ArrayList<>();
+        List<Long> sortedReportIds = new ArrayList<>(groupedByReport.keySet());
+        sortedReportIds.sort(Collections.reverseOrder());
+        
+        for (Long reportId : sortedReportIds) {
+            List<SmartRecord> smartList = groupedByReport.get(reportId);
+            LocalDateTime time = reportTimeMap.get(reportId);
+            
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("reportId", reportId);
+            entry.put("timestamp", time.toString().replace('T', ' '));
+            entry.put("attributes", smartList);
+            entry.put("capacities", capacityByReport.getOrDefault(reportId, new ArrayList<>()));
             
             // 提取整体温度（如果有的话）
             Integer temp = null;
-            for (SmartRecord attr : entry.getValue()) {
+            for (SmartRecord attr : smartList) {
                 if (attr.getTemperature() != null && attr.getTemperature() >= 0) {
                     temp = attr.getTemperature();
                     break;
                 }
             }
-            timeEntry.put("temperature", temp);
+            entry.put("temperature", temp);
             
-            groupedSmart.add(timeEntry);
+            groupedData.add(entry);
         }
         
-        // 如果指定了recordId，只保留该条记录
-        if (recordId != null && recordId >= 0 && recordId < groupedSmart.size()) {
-            List<Map<String, Object>> singleList = new ArrayList<>();
-            singleList.add(groupedSmart.get(recordId.intValue()));
-            groupedSmart = singleList;
+        // 如果指定了recordId（这里是reportId），只保留该条记录
+        if (recordId != null) {
+            for (int i = 0; i < groupedData.size(); i++) {
+                Map<String, Object> entry = groupedData.get(i);
+                Object entryReportId = entry.get("reportId");
+                if (recordId.equals(entryReportId)) {
+                    List<Map<String, Object>> singleList = new ArrayList<>();
+                    singleList.add(entry);
+                    groupedData = singleList;
+                    break;
+                }
+            }
         }
         
         Map<String, Object> result = new HashMap<>();
         result.put("disk", diskOpt.get());
-        result.put("capacity", capacity);
-        result.put("smart", groupedSmart);
+        result.put("history", groupedData);
         return result;
     }
 
@@ -357,6 +381,8 @@ public class AdminController {
             int savedCount = 0;
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
             String timeStr = LocalDateTime.now().format(formatter);
+            // 生成本次上报统一的reportId，使用时间戳作为自增ID
+            long reportId = System.currentTimeMillis();
 
             // 保存df原始输出（整个报告一份，客户端已经包含所有分区，这里整体保存）
             if (dfRaw != null && !dfRaw.isEmpty()) {
@@ -435,6 +461,7 @@ public class AdminController {
                 if (smartJson != null && !smartJson.isEmpty()) {
                     List<SmartRecord> records = smartReaderService.parseSmartJson(diskId, smartJson);
                     for (SmartRecord record : records) {
+                        record.setReportId(reportId);
                         smartDAO.insert(record);
                     }
                     logger.info("Parsed and saved {} SMART attributes for disk {} ({})", records.size(), diskId, disk.getDevicePath());
@@ -450,6 +477,7 @@ public class AdminController {
                 List<CapacityRecord> capacityRecords = smartReaderService.parseDfRaw(dfRaw);
                 int capacitySaved = 0;
                 for (CapacityRecord record : capacityRecords) {
+                    record.setReportId(reportId);
                     // 匹配文件系统到对应的磁盘
                     // 文件系统路径格式: /dev/sda1, /dev/nvme0n1p1 等
                     String filesystem = record.getMountPoint();

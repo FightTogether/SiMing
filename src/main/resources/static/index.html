@@ -297,17 +297,15 @@ async function showDiskHistoryRecords(diskId) {
     
     let html = `<table><tr><th>采集时间</th><th>温度</th><th>操作</th></tr>`;
     
-    if (data.smart.length === 0) {
+    if (data.history.length === 0) {
         html += `<tr><td colspan="3">暂无采集记录</td></tr>`;
     } else {
-        // 倒序展示，最新的在最前面
-        const reversedSmart = [...data.smart].reverse();
-        reversedSmart.forEach(record => {
+        data.history.forEach(record => {
             const temp = record.temperature !== null ? `${record.temperature}°C` : '-';
             html += `<tr>
                 <td>${record.timestamp}</td>
                 <td>${temp}</td>
-                <td><button class='btn' onclick='event.stopPropagation(); closeModal(); showDiskDetail(${diskId}, ${record.recordId})'>查看详情</button></td>
+                <td><button class='btn' onclick='event.stopPropagation(); closeModal(); showDiskDetail(${diskId}, ${record.reportId})'>查看详情</button></td>
             </tr>`;
         });
     }
@@ -331,23 +329,56 @@ async function showDiskDetail(diskId, recordId) {
     <strong>品牌型号:</strong> ${data.disk.brand} ${data.disk.model}<br>
     <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>`;
 
-    if (data.capacity.length > 0) {
-        const latestCapacity = data.capacity[data.capacity.length - 1];
-        const usedGB = (latestCapacity.usedCapacity && !isNaN(latestCapacity.usedCapacity)) ? 
-            (Number(latestCapacity.usedCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        const freeGB = (latestCapacity.availableCapacity && !isNaN(latestCapacity.availableCapacity)) ? 
-            (Number(latestCapacity.availableCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        const usagePercent = latestCapacity.usagePercent ? Number(latestCapacity.usagePercent).toFixed(1) : '?';
-        const totalGB = (Number(usedGB) + Number(freeGB)).toFixed(2);
+    // 展示对应采集批次的容量信息
+    if (data.history.length > 0) {
+        const currentHistory = data.history[0];
+        const capacities = currentHistory.capacities || [];
+        
+        if (capacities.length > 0) {
+            let totalUsedBytes = 0;
+            let totalAvailableBytes = 0;
+            capacities.forEach(cap => {
+                totalUsedBytes += cap.usedCapacity;
+                totalAvailableBytes += cap.availableCapacity;
+            });
+            
+            const usedGB = (totalUsedBytes && !isNaN(totalUsedBytes)) ? 
+                (Number(totalUsedBytes) / 1024 / 1024 / 1024).toFixed(2) : '?';
+            const freeGB = (totalAvailableBytes && !isNaN(totalAvailableBytes)) ? 
+                (Number(totalAvailableBytes) / 1024 / 1024 / 1024).toFixed(2) : '?';
+            const totalGB = (Number(usedGB) + Number(freeGB)).toFixed(2);
 
-        html += `<h3>容量信息</h3>
-        <table>
-            <tr><th>总容量</th><td>${totalGB} GB</td></tr>
-            <tr><th>已用容量</th><td>${usedGB} GB</td></tr>
-            <tr><th>可用容量</th><td>${freeGB} GB</td></tr>
-            <tr><th>使用率</th><td>${usagePercent}%</td></tr>
-            <tr><th>记录时间</th><td>${latestCapacity.recordTime ? latestCapacity.recordTime.replace('T', ' ') : '-'}</td></tr>
-        </table>`;
+            html += `<h3>容量信息</h3>
+            <table>
+                <tr><th>总容量</th><td>${totalGB} GB</td></tr>
+                <tr><th>已用容量</th><td>${usedGB} GB</td></tr>
+                <tr><th>可用容量</th><td>${freeGB} GB</td></tr>
+                <tr><th>使用率</th><td>${totalGB > 0 ? ((Number(usedGB) / Number(totalGB)) * 100).toFixed(1) : '?'}%</td></tr>
+                <tr><th>记录时间</th><td>${currentHistory.timestamp || '-'}</td></tr>
+            </table>`;
+            
+            // 如果有多个分区显示每个分区详情
+            if (capacities.length > 1) {
+                html += `<h4>各分区详情</h4>
+                <table>
+                    <tr><th>文件系统</th><th>挂载点</th><th>总容量</th><th>已用</th><th>可用</th><th>使用率</th></tr>`;
+                capacities.forEach(cap => {
+                    const usedGBPart = (cap.usedCapacity / 1024 / 1024 / 1024).toFixed(2);
+                    const freeGBPart = (cap.availableCapacity / 1024 / 1024 / 1024).toFixed(2);
+                    const totalGBPart = (Number(usedGBPart) + Number(freeGBPart)).toFixed(2);
+                    const usage = (Number(usedGBPart) / Number(totalGBPart) * 100).toFixed(1);
+                    html += `<tr>
+                        <td>${cap.filesystem}</td>
+                        <td>${cap.mountPoint}</td>
+                        <td>${totalGBPart} GB</td>
+                        <td>${usedGBPart} GB</td>
+                        <td>${freeGBPart} GB</td>
+                        <td>${usage}%</td>
+                    </tr>`;
+                });
+                html += `</table>`;
+            }
+        }
     }
 
     function findAttributeByKey(attributes, searchKey) {
@@ -475,8 +506,8 @@ async function showDiskDetail(diskId, recordId) {
         'critical_comp_time': '关键复合时间'
     };
 
-    if (data.smart.length > 0) {
-        const latest = data.smart[data.smart.length - 1].attributes;
+    if (data.history.length > 0) {
+        const latest = data.history[0].attributes;
         
         const isSSD = latest.some(a => {
             const key = a.attributeName.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
@@ -657,24 +688,24 @@ async function showDiskDetail(diskId, recordId) {
     let temperatureLabels = [];
     let temperatureData = [];
     
-    if (data.smart.length > 1) {
+    if (data.history.length > 1) {
         const temps = [];
         const labels = [];
         let index = 0;
         // 每天只取一个点，避免过多数据
         const seenDays = new Set();
-        data.smart.forEach(s => {
-            if (!s.recordTime) {
+        data.history.forEach(s => {
+            // 从timestamp提取日期
+            if (!s.timestamp) {
                 index++;
                 return;
             }
-            const date = s.recordTime.split('T')[0];
-            if (!seenDays.has(date) || index === data.smart.length - 1) {
+            const date = s.timestamp.split(' ')[0];
+            if (!seenDays.has(date) || index === data.history.length - 1) {
                 seenDays.add(date);
-                const tempAttr = findAttributeByKey(s.attributes, 'temperature');
-                if (tempAttr && tempAttr.rawValue !== null && !isNaN(parseInt(tempAttr.rawValue))) {
+                if (s.temperature !== null && !isNaN(s.temperature)) {
                     labels.push(date);
-                    temps.push(parseInt(tempAttr.rawValue));
+                    temps.push(s.temperature);
                 }
                 index++;
             }

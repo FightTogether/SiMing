@@ -18,6 +18,11 @@ public class SmartRecord {
     private Long id;
 
     /**
+     * 采集批次ID - 同一次上报所有记录使用同一个reportId
+     */
+    private Long reportId;
+
+    /**
      * 关联硬盘ID
      */
     private Long diskId;
