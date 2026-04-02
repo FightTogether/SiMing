@@ -26,4 +26,13 @@ else
 fi
 
 log "启动SiMing应用..."
+
+# 如果容器挂载了硬盘设备，自动启动disk-monitor守护进程
+if [ -d "/dev" ] && [ "$(ls -l /dev/ | grep -E 'sd|nvme' | grep -v '^ ' | wc -l)" -gt 0 ]; then
+    log "检测到挂载的硬盘设备，正在启动disk-monitor守护进程..."
+    ./disk-monitor.sh restart /app/client-config.conf
+else
+    log "未检测到挂载的硬盘设备，跳过disk-monitor启动"
+fi
+
 exec java -jar app.jar

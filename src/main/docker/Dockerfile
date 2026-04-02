@@ -15,8 +15,9 @@ FROM docker.1ms.run/azul/zulu-openjdk-alpine:11-jre-latest
 
 WORKDIR /app
 
-# 安装smartmontools用于获取SMART信息和sqlite3用于数据库初始化
-RUN apk add --no-cache smartmontools sqlite3 bash
+# 安装smartmontools用于获取SMART信息、python3用于JSON转义和sqlite3用于数据库初始化、curl
+# alpine中sqlite包名是sqlite 不是sqlite3
+RUN apk add --no-cache smartmontools sqlite bash python3 curl
 
 # 复制构建好的jar
 COPY --from=builder /app/target/siming-1.0-SNAPSHOT.jar app.jar
@@ -38,6 +39,14 @@ ENV DB_PATH="/app/data/siming.db"
 # 复制启动脚本
 COPY --from=builder /app/src/main/docker/start.sh .
 RUN chmod +x start.sh
+
+# 复制disk-monitor.sh到容器内
+COPY --from=builder /app/src/main/resources/static/disk-monitor.sh /app/
+RUN chmod +x /app/disk-monitor.sh
+
+# 生成默认配置文件
+RUN echo 'SERVER_URL="http://localhost:8080"' > /app/client-config.conf && \
+    echo 'CLIENT_ID="docker-host"' >> /app/client-config.conf
 
 # 入口点
 ENTRYPOINT ["./start.sh"]
