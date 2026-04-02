@@ -18,6 +18,7 @@ public interface CapacityRecordMapper {
     @Results(id = "capacityRecordResultMap", value = {
             @Result(property = "id", column = "id"),
             @Result(property = "diskId", column = "disk_id"),
+            @Result(property = "reportId", column = "report_id"),
             @Result(property = "filesystem", column = "filesystem"),
             @Result(property = "usedCapacity", column = "used_capacity"),
             @Result(property = "availableCapacity", column = "available_capacity"),
@@ -37,8 +38,8 @@ public interface CapacityRecordMapper {
     /**
      * 插入容量记录
      */
-    @Insert("INSERT INTO capacity_records (disk_id, used_capacity, available_capacity, usage_percent, mount_point, filesystem) " +
-            "VALUES (#{record.diskId}, #{record.usedCapacity}, #{record.availableCapacity}, #{record.usagePercent}, " +
+    @Insert("INSERT INTO capacity_records (disk_id, report_id, used_capacity, available_capacity, usage_percent, mount_point, filesystem) " +
+            "VALUES (#{record.diskId}, #{record.reportId}, #{record.usedCapacity}, #{record.availableCapacity}, #{record.usagePercent}, " +
             "#{record.mountPoint}, #{record.filesystem})")
     @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "record.id", before = false, resultType = Long.class)
     int insert(@Param("record") CapacityRecord record);

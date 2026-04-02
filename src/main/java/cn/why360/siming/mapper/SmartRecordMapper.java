@@ -18,6 +18,7 @@ public interface SmartRecordMapper {
     @Results(id = "smartRecordResultMap", value = {
             @Result(property = "id", column = "id"),
             @Result(property = "diskId", column = "disk_id"),
+            @Result(property = "reportId", column = "report_id"),
             @Result(property = "attributeId", column = "attribute_id"),
             @Result(property = "attributeName", column = "attribute_name"),
             @Result(property = "currentValue", column = "current_value"),
@@ -49,9 +50,9 @@ public interface SmartRecordMapper {
      */
     @Insert({
             "<script>",
-            "INSERT INTO smart_records (disk_id, attribute_id, attribute_name, current_value, worst_value, threshold, raw_value, failed, temperature) VALUES ",
+            "INSERT INTO smart_records (disk_id, report_id, attribute_id, attribute_name, current_value, worst_value, threshold, raw_value, failed, temperature) VALUES ",
             "<foreach collection='records' item='record' separator=','>",
-            "(#{record.diskId}, #{record.attributeId}, #{record.attributeName}, #{record.currentValue}, #{record.worstValue}, #{record.threshold}, #{record.rawValue}, #{record.failed}, #{record.temperature})",
+            "(#{record.diskId}, #{record.reportId}, #{record.attributeId}, #{record.attributeName}, #{record.currentValue}, #{record.worstValue}, #{record.threshold}, #{record.rawValue}, #{record.failed}, #{record.temperature})",
             "</foreach>",
             "</script>"
     })
@@ -60,8 +61,8 @@ public interface SmartRecordMapper {
     /**
      * 插入单条SMART记录
      */
-    @Insert("INSERT INTO smart_records (disk_id, attribute_id, attribute_name, current_value, worst_value, threshold, raw_value, failed, temperature) " +
-            "VALUES (#{record.diskId}, #{record.attributeId}, #{record.attributeName}, #{record.currentValue}, #{record.worstValue}, " +
+    @Insert("INSERT INTO smart_records (disk_id, report_id, attribute_id, attribute_name, current_value, worst_value, threshold, raw_value, failed, temperature) " +
+            "VALUES (#{record.diskId}, #{record.reportId}, #{record.attributeId}, #{record.attributeName}, #{record.currentValue}, #{record.worstValue}, " +
             "#{record.threshold}, #{record.rawValue}, #{record.failed}, #{record.temperature})")
     @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "record.id", before = false, resultType = Long.class)
     int insert(@Param("record") SmartRecord record);
