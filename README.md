@@ -137,11 +137,74 @@ SiMing> analyze 1 30
 4. 判断健康等级：GOOD / WARNING / CRITICAL
 5. 给出相应的建议和未来趋势推测
 
+## 客户端部署
+
+SiMing 采用分离架构，服务端统一存储和分析数据，客户端部署在需要监控的服务器上采集数据。
+
+### 一键安装客户端
+
+在需要监控的客户端主机上执行以下命令：
+
+```bash
+# 替换为你的 SiMing 服务端地址
+curl -fsSL https://your-siming-server.com/install.sh | bash -s https://your-siming-server.com
+```
+
+示例：
+```bash
+curl -fsSL https://siming.example.com/install.sh | bash -s https://siming.example.com
+```
+
+这个命令会：
+1. 自动从服务端下载 `disk-monitor.sh` 客户端脚本
+2. 自动创建 `client-config.conf` 配置文件，自动填入服务端地址
+3. 自动使用当前主机名作为 `CLIENT_ID`
+4. 设置执行权限，完成安装
+
+### 客户端使用说明
+
+安装完成后，你可以：
+
+```bash
+# 进入安装目录（默认在 ~/siming）
+cd ~/siming
+
+# 单次采集测试
+./disk-monitor.sh once
+
+# 启动守护进程（每天自动采集）
+./disk-monitor.sh start
+
+# 查看守护进程状态
+./disk-monitor.sh status
+
+# 停止守护进程
+./disk-monitor.sh stop
+
+# 重启守护进程
+./disk-monitor.sh restart
+
+# 从服务端更新到最新版本
+./disk-monitor.sh update
+
+# 查看帮助
+./disk-monitor.sh help
+```
+
 ## 依赖
 
+服务端依赖：
 - Java 17+
 - [smartmontools](https://www.smartmontools.org/) (获取 SMART 信息，Docker 镜像已内置)
 - OpenAI API Key (可选，用于大模型分析)
+
+客户端依赖：
+- bash
+- curl
+- smartmontools
+- python3
+- util-linux (lsblk)
+- coreutils
 
 ## 项目结构
 
