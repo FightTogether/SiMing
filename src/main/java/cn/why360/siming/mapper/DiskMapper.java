@@ -15,7 +15,7 @@ public interface DiskMapper {
     /**
      * 获取所有硬盘
      */
-    @Select("SELECT * FROM disks ORDER BY device_path")
+    @Select("SELECT * FROM disks ORDER BY client_id, device_path")
     @Results(id = "diskResultMap", value = {
             @Result(property = "id", column = "id"),
             @Result(property = "clientId", column = "client_id"),
@@ -35,7 +35,7 @@ public interface DiskMapper {
     /**
      * 获取所有需要监控的硬盘
      */
-    @Select("SELECT * FROM disks WHERE monitored = 1 ORDER BY device_path")
+    @Select("SELECT * FROM disks WHERE monitored = 1 ORDER BY client_id, device_path")
     @ResultMap("diskResultMap")
     List<Disk> findMonitored();
 

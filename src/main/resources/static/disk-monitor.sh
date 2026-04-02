@@ -114,6 +114,13 @@ discover_disks() {
         vendor=$(echo "$vendor" | sed 's/^ *//; s/ *$//')
         model=$(echo "$model" | sed 's/^ *//; s/ *$//')
         serial=$(echo "$serial" | sed 's/^ *//; s/ *$//')
+        
+        # 跳过品牌为QEMU的虚拟硬盘
+        if [ "$vendor" = "QEMU" ]; then
+            log "跳过QEMU虚拟硬盘: $device_path"
+            continue
+        fi
+        
         # 确保is_rotational是数字
         if ! [[ $is_rotational =~ ^[0-9]+$ ]]; then
             is_rotational=1

@@ -85,6 +85,20 @@
     <div id='disks' class='tab-content active'>
         <div class='card'>
             <h2>监控硬盘列表</h2>
+            <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: end; flex-wrap: wrap;">
+                <div>
+                    <label for="client-filter" style="font-weight: 600; margin-right: 5px;">客户端:</label>
+                    <select id="client-filter" onchange="filterDisks()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="brand-filter" style="font-weight: 600; margin-right: 5px;">品牌:</label>
+                    <select id="brand-filter" onchange="filterDisks()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+            </div>
             <div id='disks-table'>加载中...</div>
         </div>
     </div>
@@ -105,6 +119,8 @@
 </div>
 
 <script>
+let allDisks = [];
+
 function switchTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -114,9 +130,57 @@ function switchTab(tabName) {
     if (tabName === 'config') loadConfig();
 }
 
-async function loadDisks() {
-    const res = await fetch('/api/disks');
-    const disks = await res.json();
+// 填充下拉框选项
+function populateFilters(disks) {
+    const clientFilter = document.getElementById('client-filter');
+    const brandFilter = document.getElementById('brand-filter');
+    
+    // 获取所有唯一的客户端ID
+    const clients = [...new Set(disks.map(d => d.clientId).filter(c => c))].sort();
+    // 获取所有唯一的品牌
+    const brands = [...new Set(disks.map(d => d.brand).filter(b => b))].sort();
+    
+    // 清空现有选项（保留"全部"）
+    clientFilter.innerHTML = '<option value="">全部</option>';
+    brandFilter.innerHTML = '<option value="">全部</option>';
+    
+    // 添加客户端选项
+    clients.forEach(client => {
+        const option = document.createElement('option');
+        option.value = client;
+        option.textContent = client;
+        clientFilter.appendChild(option);
+    });
+    
+    // 添加品牌选项
+    brands.forEach(brand => {
+        const option = document.createElement('option');
+        option.value = brand;
+        option.textContent = brand;
+        brandFilter.appendChild(option);
+    });
+}
+
+// 根据选择过滤硬盘
+function filterDisks() {
+    const selectedClient = document.getElementById('client-filter').value;
+    const selectedBrand = document.getElementById('brand-filter').value;
+    
+    let filteredDisks = allDisks;
+    
+    if (selectedClient) {
+        filteredDisks = filteredDisks.filter(d => d.clientId === selectedClient);
+    }
+    
+    if (selectedBrand) {
+        filteredDisks = filteredDisks.filter(d => d.brand === selectedBrand);
+    }
+    
+    renderDisks(filteredDisks);
+}
+
+// 渲染硬盘列表
+function renderDisks(disks) {
     let html = `<table><tr><th>ID</th><th>客户端</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>操作</th></tr>`;
     disks.forEach(d => {
         const badge = d.monitored ? 'badge-success' : 'badge-warning';
@@ -129,8 +193,18 @@ async function loadDisks() {
         html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
         html += `</td></tr>`;
     });
+    if (disks.length === 0) {
+        html += `<tr><td colspan="8" style="text-align: center; color: #999;">没有匹配的硬盘</td></tr>`;
+    }
     html += `</table>`;
     document.getElementById('disks-table').innerHTML = html;
+}
+
+async function loadDisks() {
+    const res = await fetch('/api/disks');
+    allDisks = await res.json();
+    populateFilters(allDisks);
+    filterDisks();
 }
 
 async function loadAnalyses() {
