@@ -42,15 +42,23 @@ main() {
         error "sqlite3 未安装，请先安装sqlite3"
     fi
 
-    # 如果数据库文件已经存在，询问是否确认删除
+    # 如果数据库文件已经存在
     if [ -f "$db_path" ]; then
-        read -p "数据库文件 $db_path 已经存在，是否删除并重新初始化？(y/N) " confirm
-        if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-            log "操作已取消"
+        # 检查是否在非交互式环境（docker启动），如果数据库已经存在不需要重新初始化
+        if [ -t 0 ]; then
+            # 交互式环境，询问用户
+            read -p "数据库文件 $db_path 已经存在，是否删除并重新初始化？(y/N) " confirm
+            if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+                log "操作已取消"
+                exit 0
+            fi
+            rm -f "$db_path"
+            log "已删除旧数据库文件: $db_path"
+        else
+            # 非交互式环境（docker自动启动），数据库文件存在说明已经初始化，直接返回
+            log "数据库文件已存在，跳过初始化"
             exit 0
         fi
-        rm -f "$db_path"
-        log "已删除旧数据库文件: $db_path"
     else
         # 确保目录存在
         local db_dir=$(dirname "$db_path")
