@@ -16,9 +16,7 @@ FROM docker.1ms.run/azul/zulu-openjdk-alpine:11-jre-latest
 WORKDIR /app
 
 # 安装smartmontools用于获取SMART信息
-RUN apt-get update && \
-    apt-get install -y smartmontools && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache smartmontools
 
 # 复制构建好的jar
 COPY --from=builder /app/target/siming-1.0-SNAPSHOT.jar app.jar
