@@ -117,15 +117,13 @@ function switchTab(tabName) {
 async function loadDisks() {
     const res = await fetch('/api/disks');
     const disks = await res.json();
-    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>Cron表达式</th><th>操作</th></tr>`;
+    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>操作</th></tr>`;
     disks.forEach(d => {
         const badge = d.monitored ? 'badge-success' : 'badge-warning';
         const text = d.monitored ? '监控中' : '未监控';
-        const cron = d.monitorCron || '(默认)';
         const sizeGB = (d.totalCapacity && !isNaN(d.totalCapacity)) ? (Number(d.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>${escapeHtml(cron)}</td><td>`;
+        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
         html += `<button class='btn' onclick='event.stopPropagation(); showDiskDetail(${d.id})'>查看详情</button> `;
-        html += `<button class='btn' onclick='event.stopPropagation(); editDiskCron(${d.id}, "${escapeHtml(cron.replace('(默认)', ''))}", ${d.monitored})'>编辑监控</button> `;
         html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
         html += `</td></tr>`;
     });
@@ -194,7 +192,7 @@ async function showDiskAnalysisHistory(diskId) {
     const res = await fetch(`/api/disk/${diskId}/analyses`);
     const analyses = await res.json();
     
-    let html = `<h3>历史分析结果</h3>`;
+    let html = ``;
     if (analyses.length === 0) {
         html += `<p>暂无分析结果，点击下方按钮开始新分析</p>`;
     } else {
@@ -296,8 +294,8 @@ async function showDiskDetail(diskId) {
     const res = await fetch(`/api/disk/${diskId}/history`);
     const data = await res.json();
 
-    let html = `<h2>硬盘详情: ${data.disk.brand} ${data.disk.model}</h2>
-    <p><strong>设备:</strong> ${data.disk.devicePath}<br>
+    let html = `<p><strong>设备:</strong> ${data.disk.devicePath}<br>
+    <strong>品牌型号:</strong> ${data.disk.brand} ${data.disk.model}<br>
     <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>`;
 
     if (data.capacity.length > 0) {
@@ -731,22 +729,16 @@ async function showAnalysisResult(analysisId) {
     showModal('分析结果', html);
 }
 
-function editDiskCron(diskId, currentCron, monitored) {
-    currentCron = currentCron.replace(/"/g, '"').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+function editDiskConfig(diskId, monitored) {
     const html = `
         <h2>编辑监控配置</h2>
-        <form onsubmit='saveDiskCron(event, ${diskId})'>
+        <form onsubmit='saveDiskConfig(event, ${diskId})'>
         <div class='form-group'>
             <label>启用监控</label>
             <select name='monitored'>
                 <option value='true' ${monitored ? 'selected' : ''}>是</option>
                 <option value='false' ${!monitored ? 'selected' : ''}>否</option>
             </select>
-        </div>
-        <div class='form-group'>
-            <label>Cron表达式</label>
-            <input type='text' name='monitorCron' value='${escapeHtml(currentCron)}' placeholder='留空使用默认值: 0 0 2 * * ?'>
-            <small style='color: #666;'>默认值: 每天凌晨2点执行一次。示例: 0 0 */6 * * ? = 每6小时一次</small>
         </div>
         <button type='submit' class='btn btn-success'>保存</button>
         <button type='button' class='btn' onclick='closeModal()'>取消</button>
@@ -755,7 +747,7 @@ function editDiskCron(diskId, currentCron, monitored) {
     showModal('编辑监控配置', html);
 }
 
-async function saveDiskCron(e, diskId) {
+async function saveDiskConfig(e, diskId) {
     e.preventDefault();
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData);
@@ -767,7 +759,7 @@ async function saveDiskCron(e, diskId) {
     });
     const result = await res.json();
     if (result.success) {
-        alert('配置已保存，调度器已重新加载');
+        alert('配置已保存');
         closeModal();
         loadDisks();
     } else {

@@ -2,14 +2,8 @@ package cn.why360.siming;
 
 import cn.why360.siming.config.SimingConfig;
 import cn.why360.siming.dao.DiskDAO;
-import cn.why360.siming.dao.SmartRecordDAO;
 import cn.why360.siming.entity.Disk;
-import cn.why360.siming.scheduler.SchedulerManager;
-import cn.why360.siming.service.CapacityMonitorService;
 import cn.why360.siming.service.DiskDiscoveryService;
-import cn.why360.siming.service.LlmAnalysisService;
-import cn.why360.siming.service.SmartReaderService;
-import org.quartz.SchedulerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -44,26 +38,14 @@ public class SimingApplication {
             SimingConfig config = context.getBean(SimingConfig.class);
             DiskDAO diskDAO = context.getBean(DiskDAO.class);
             DiskDiscoveryService discoveryService = context.getBean(DiskDiscoveryService.class);
-            CapacityMonitorService capacityService = context.getBean(CapacityMonitorService.class);
-            SmartReaderService smartReaderService = context.getBean(SmartReaderService.class);
-            LlmAnalysisService llmAnalysisService = context.getBean(LlmAnalysisService.class);
 
             logger.info("Configuration loaded from application.properties");
 
-            // 如果是本地模式，发现硬盘并启动调度
+            // 如果是本地模式，发现硬盘
             if (config.isLocalMode()) {
                 // 发现硬盘
                 discoverAndSaveDisks(discoveryService, diskDAO);
-                // 启动调度器
-                SchedulerManager schedulerManager = new SchedulerManager(
-                        config.getMonitor(),
-                        diskDAO,
-                        capacityService,
-                        smartReaderService,
-                        context.getBean(SmartRecordDAO.class),
-                        llmAnalysisService);
-                startScheduler(schedulerManager);
-                logger.info("Local mode: disk discovery and monitoring scheduler started");
+                logger.info("Local mode: disk discovery completed");
             } else {
                 logger.info("Running in server-only mode, all data will come from remote clients");
             }
@@ -104,13 +86,5 @@ public class SimingApplication {
                 logger.debug("Disk {} already exists, skipping", disk.getDevicePath());
             }
         }
-    }
-
-    /**
-     * 启动调度器
-     */
-    private static void startScheduler(SchedulerManager schedulerManager) throws SchedulerException {
-        schedulerManager.start();
-        logger.info("Monitoring scheduler started");
     }
 }

@@ -15,5 +15,7 @@ services:
     devices:
       - /dev/sda:/dev/sda
       - /dev/sdb:/dev/sdb
+    ports:
+      - "8080:8080"
       # 添加更多硬盘设备根据需要
     network_mode: "bridge"

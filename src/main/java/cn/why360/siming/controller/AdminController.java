@@ -9,10 +9,8 @@ import cn.why360.siming.entity.AnalysisResult;
 import cn.why360.siming.entity.CapacityRecord;
 import cn.why360.siming.entity.Disk;
 import cn.why360.siming.entity.SmartRecord;
-import cn.why360.siming.scheduler.SchedulerManager;
 import cn.why360.siming.service.LlmAnalysisService;
 import cn.why360.siming.service.SmartReaderService;
-import org.quartz.SchedulerException;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -40,13 +38,11 @@ public class AdminController {
     private final AnalysisResultDAO analysisDAO;
     private final LlmAnalysisService llmService;
     private final SimingConfig config;
-    private final SchedulerManager schedulerManager;
 
     public AdminController(DiskDAO diskDAO, CapacityRecordDAO capacity,
                           SmartRecordDAO smartDAO, AnalysisResultDAO analysisDAO,
                           LlmAnalysisService llmService, SmartReaderService smartReaderService,
-                          SimingConfig config,
-                          SchedulerManager schedulerManager) {
+                          SimingConfig config) {
         this.diskDAO = diskDAO;
         this.capacityDAO = capacity;
         this.smartDAO = smartDAO;
@@ -54,7 +50,6 @@ public class AdminController {
         this.llmService = llmService;
         this.smartReaderService = smartReaderService;
         this.config = config;
-        this.schedulerManager = schedulerManager;
     }
 
     private final SmartReaderService smartReaderService;
@@ -512,7 +507,7 @@ public class AdminController {
     }
 
     /**
-     * 更新硬盘监控配置（监控状态和Cron表达式）
+     * 更新硬盘监控配置（仅保留监控状态，不再需要Cron表达式）
      */
     @PostMapping("/disk/{id}/update")
     public Map<String, Object> updateDiskConfig(@PathVariable Long id, @RequestBody Map<String, Object> updates) {
@@ -541,29 +536,12 @@ public class AdminController {
                 disk.setMonitored(monitored);
             }
 
-            // 更新Cron表达式
-            if (updates.containsKey("monitorCron")) {
-                String cron = (String) updates.get("monitorCron");
-                if (cron != null && cron.trim().isEmpty()) {
-                    cron = null;
-                }
-                disk.setMonitorCron(cron);
-            }
-
             // 更新到数据库
             diskDAO.update(disk);
 
-            // 重新调度所有任务
-            schedulerManager.rescheduleAll();
-
             result.put("success", true);
             result.put("disk", disk);
-            logger.info("Updated disk {} config, rescheduled all jobs", id);
-            return result;
-        } catch (SchedulerException e) {
-            logger.error("Failed to reschedule after disk config update", e);
-            result.put("success", false);
-            result.put("error", "Failed to reschedule: " + e.getMessage());
+            logger.info("Updated disk {} config", id);
             return result;
         } catch (Exception e) {
             logger.error("Failed to update disk config", e);
