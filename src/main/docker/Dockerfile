@@ -1,4 +1,4 @@
-FROM docker.1ms.run/library/maven:3.8.6-jdk-11 AS builder
+FROM docker.mirrors.ustc.edu.cn/library/maven:3.8.6-jdk-11 AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY ../../.. .
 RUN mvn package -DskipTests
 
 # 最终运行镜像
-FROM docker.1ms.run/library/openjdk:11-jre
+FROM docker.mirrors.ustc.edu.cn/library/openjdk:11-jre
 
 WORKDIR /app
 
