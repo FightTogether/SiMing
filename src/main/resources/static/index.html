@@ -302,10 +302,11 @@ async function showDiskHistoryRecords(diskId) {
     } else {
         data.history.forEach(record => {
             const temp = record.temperature !== null ? `${record.temperature}°C` : '-';
+            const reportId = record.reportId || '';
             html += `<tr>
                 <td>${record.timestamp}</td>
                 <td>${temp}</td>
-                <td><button class='btn' onclick='event.stopPropagation(); closeModal(); showDiskDetail(${diskId}, ${record.reportId})'>查看详情</button></td>
+                <td><button class='btn' onclick='event.stopPropagation(); closeModal(); showDiskDetail(${diskId}, ${reportId})'>查看详情</button></td>
             </tr>`;
         });
     }
@@ -319,7 +320,7 @@ async function showDiskHistoryRecords(diskId) {
 
 async function showDiskDetail(diskId, recordId) {
     let url = `/api/disk/${diskId}/history`;
-    if (typeof recordId !== 'undefined') {
+    if (typeof recordId !== 'undefined' && !isNaN(recordId)) {
         url += `?recordId=${recordId}`;
     }
     const res = await fetch(url);
