@@ -117,12 +117,13 @@ function switchTab(tabName) {
 async function loadDisks() {
     const res = await fetch('/api/disks');
     const disks = await res.json();
-    let html = `<table><tr><th>ID</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>操作</th></tr>`;
+    let html = `<table><tr><th>ID</th><th>客户端</th><th>设备</th><th>品牌</th><th>型号</th><th>总容量</th><th>状态</th><th>操作</th></tr>`;
     disks.forEach(d => {
         const badge = d.monitored ? 'badge-success' : 'badge-warning';
         const text = d.monitored ? '监控中' : '未监控';
         const sizeGB = (d.totalCapacity && !isNaN(d.totalCapacity)) ? (Number(d.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
-        html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
+        const clientId = d.clientId || '-';
+        html += `<tr><td>${d.id}</td><td>${clientId}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
         html += `<button class='btn' onclick='event.stopPropagation(); showDiskDetail(${d.id})'>查看详情</button> `;
         html += `<button class='btn' onclick='event.stopPropagation(); showDiskHistoryRecords(${d.id})'>查看采集记录</button> `;
         html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
@@ -327,6 +328,7 @@ async function showDiskDetail(diskId, recordId) {
     const data = await res.json();
 
     let html = `<p><strong>设备:</strong> ${data.disk.devicePath}<br>
+    <strong>客户端:</strong> ${data.disk.clientId || '-'}<br>
     <strong>品牌型号:</strong> ${data.disk.brand} ${data.disk.model}<br>
     <strong>序列号:</strong> ${data.disk.serialNumber || '-'}</p>`;
 
