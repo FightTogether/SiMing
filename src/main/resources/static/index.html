@@ -124,6 +124,7 @@ async function loadDisks() {
         const sizeGB = (d.totalCapacity && !isNaN(d.totalCapacity)) ? (Number(d.totalCapacity) / 1024 / 1024 / 1024).toFixed(2) : '?';
         html += `<tr><td>${d.id}</td><td>${d.devicePath}</td><td>${d.brand || '-'}</td><td>${d.model}</td><td>${sizeGB} GB</td><td><span class='badge ${badge}'>${text}</span></td><td>`;
         html += `<button class='btn' onclick='event.stopPropagation(); showDiskDetail(${d.id})'>查看详情</button> `;
+        html += `<button class='btn' onclick='event.stopPropagation(); showDiskHistoryRecords(${d.id})'>查看采集记录</button> `;
         html += `<button class='btn btn-success' onclick='triggerAnalysis(${d.id})'>AI分析</button>`;
         html += `</td></tr>`;
     });
@@ -290,8 +291,40 @@ function showAnalysisResultMarkdownText(content) {
     showModal('分析结果', html);
 }
 
-async function showDiskDetail(diskId) {
+async function showDiskHistoryRecords(diskId) {
     const res = await fetch(`/api/disk/${diskId}/history`);
+    const data = await res.json();
+    
+    let html = `<table><tr><th>采集时间</th><th>温度</th><th>操作</th></tr>`;
+    
+    if (data.smart.length === 0) {
+        html += `<tr><td colspan="3">暂无采集记录</td></tr>`;
+    } else {
+        // 倒序展示，最新的在最前面
+        const reversedSmart = [...data.smart].reverse();
+        reversedSmart.forEach(record => {
+            const temp = record.temperature !== null ? `${record.temperature}°C` : '-';
+            html += `<tr>
+                <td>${record.timestamp}</td>
+                <td>${temp}</td>
+                <td><button class='btn' onclick='event.stopPropagation(); closeModal(); showDiskDetail(${diskId}, ${record.recordId})'>查看详情</button></td>
+            </tr>`;
+        });
+    }
+    
+    html += `</table><div style="margin-top: 15px;">
+        <button class='btn' onclick='closeModal()'>关闭</button>
+    </div>`;
+    
+    showModal('历史采集记录', html);
+}
+
+async function showDiskDetail(diskId, recordId) {
+    let url = `/api/disk/${diskId}/history`;
+    if (typeof recordId !== 'undefined') {
+        url += `?recordId=${recordId}`;
+    }
+    const res = await fetch(url);
     const data = await res.json();
 
     let html = `<p><strong>设备:</strong> ${data.disk.devicePath}<br>

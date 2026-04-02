@@ -64,9 +64,10 @@ public class AdminController {
 
     /**
      * 获取硬盘详情和历史数据
+     * 如果recordId存在，则查询指定记录，否则查询最新一条
      */
     @GetMapping("/disk/{id}/history")
-    public Map<String, Object> getDiskHistory(@PathVariable Long id) {
+    public Map<String, Object> getDiskHistory(@PathVariable Long id, @RequestParam(required = false) Long recordId) {
         Optional<Disk> diskOpt = diskDAO.findById(id);
         if (diskOpt.isEmpty()) {
             throw new RuntimeException("Disk not found with id: " + id);
@@ -83,8 +84,10 @@ public class AdminController {
         
         // 转换为便于前端处理的格式
         List<Map<String, Object>> groupedSmart = new ArrayList<>();
+        int index = 0;
         for (Map.Entry<LocalDateTime, List<SmartRecord>> entry : groupedByTime.entrySet()) {
             Map<String, Object> timeEntry = new HashMap<>();
+            timeEntry.put("recordId", index++);
             timeEntry.put("timestamp", entry.getKey().toString().replace('T', ' '));
             timeEntry.put("attributes", entry.getValue());
             
@@ -99,6 +102,13 @@ public class AdminController {
             timeEntry.put("temperature", temp);
             
             groupedSmart.add(timeEntry);
+        }
+        
+        // 如果指定了recordId，只保留该条记录
+        if (recordId != null && recordId >= 0 && recordId < groupedSmart.size()) {
+            List<Map<String, Object>> singleList = new ArrayList<>();
+            singleList.add(groupedSmart.get(recordId.intValue()));
+            groupedSmart = singleList;
         }
         
         Map<String, Object> result = new HashMap<>();
