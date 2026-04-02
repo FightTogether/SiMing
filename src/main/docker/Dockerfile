@@ -1,4 +1,4 @@
-FROM hub-mirror.c.163.com/library/maven:3.8.6-jdk-11 AS builder
+FROM maven:3.8.6-jdk-11 AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY ../../.. .
 RUN mvn package -DskipTests
 
 # 最终运行镜像
-FROM hub-mirror.c.163.com/library/openjdk:11-jre
+FROM openjdk:11-jre
 
 WORKDIR /app
 
