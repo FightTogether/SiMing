@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SiMing 客户端一键安装脚本
-# 用法: curl -fsSL <server-url>/install.sh | bash -s <server-url>
+# 用法: curl -fsSL <server-url>/install.sh | bash -s <server-url> [--with-systemd]
 
 set -e
 
@@ -15,12 +15,22 @@ error() {
     exit 1
 }
 
-# 检查参数
-if [ $# -ne 1 ]; then
-    error "用法错误\n正确用法: curl -fsSL <server-url>/install.sh | bash -s <server-url>\n示例: curl -fsSL https://siming.example.com/install.sh | bash -s https://siming.example.com"
-fi
+INSTALL_WITH_SYSTEMD=false
+SERVER_URL=""
 
-SERVER_URL="$1"
+# 解析参数
+for arg in "$@"; do
+    if [ "$arg" = "--with-systemd" ]; then
+        INSTALL_WITH_SYSTEMD=true
+    else
+        SERVER_URL="$arg"
+    fi
+done
+
+# 检查参数
+if [ -z "$SERVER_URL" ]; then
+    error "用法错误\n正确用法: curl -fsSL <server-url>/install.sh | bash -s <server-url> [--with-systemd]\n示例: curl -fsSL https://siming.example.com/install.sh | bash -s https://siming.example.com --with-systemd\n--with-systemd: 安装为systemd服务，实现开机自动启动"
+fi
 
 # 去除末尾斜杠
 SERVER_URL=$(echo "$SERVER_URL" | sed 's/\/$//')
@@ -87,11 +97,65 @@ CLIENT_ID="$CLIENT_ID"
 EOF
 
 log "配置文件生成完成"
-log "安装完成！"
-echo
-log "👉 下一步："
-echo "   cd $INSTALL_DIR"
-echo "   ./disk-monitor.sh once          # 测试采集"
-echo "   ./disk-monitor.sh start         # 启动守护进程"
-echo "   ./disk-monitor.sh help          # 查看更多帮助"
-echo
+
+# 安装systemd服务
+if [ "$INSTALL_WITH_SYSTEMD" = true ]; then
+    if [ ! -d "/etc/systemd/system" ]; then
+        error "/etc/systemd/system 不存在，这不是一个systemd系统，无法安装systemd服务"
+    fi
+
+    # 检查是否有root权限
+    if [ "$(id -u)" -ne 0 ]; then
+        error "安装systemd服务需要root权限，请使用sudo运行安装"
+    fi
+
+    log "开始安装systemd服务..."
+
+    # 生成systemd服务文件
+    SERVICE_FILE="/etc/systemd/system/siming-disk-monitor.service"
+
+    cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=SiMing Disk Monitor Client
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/disk-monitor.sh once
+Restart=always
+RestartSec=3600
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    log "Systemd服务文件已创建: $SERVICE_FILE"
+
+    # 重新加载systemd配置
+    systemctl daemon-reload
+    # 启用开机启动
+    systemctl enable siming-disk-monitor.service
+    # 启动服务
+    systemctl start siming-disk-monitor.service
+
+    log "✅ Systemd服务安装完成！"
+    log "服务已启用开机自动启动"
+    echo
+    log "查看服务状态: systemctl status siming-disk-monitor.service"
+    log "查看日志: journalctl -u siming-disk-monitor.service -f"
+else
+    log "安装完成！"
+    echo
+    log "👉 下一步："
+    echo "   cd $INSTALL_DIR"
+    echo "   ./disk-monitor.sh once          # 测试采集"
+    echo "   ./disk-monitor.sh start         # 启动守护进程"
+    echo "   ./disk-monitor.sh help          # 查看更多帮助"
+    echo
+    log "ℹ️  如果需要安装为systemd服务实现开机启动，请重新运行安装并添加 --with-systemd 参数:"
+    echo "   curl -fsSL $SERVER_URL/install.sh | sudo bash -s $SERVER_URL --with-systemd"
+    echo
+fi
