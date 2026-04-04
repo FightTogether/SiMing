@@ -4,8 +4,23 @@
 # 功能：采集硬盘原始信息并发送到服务端
 # 客户端只采集原始数据，解析和存储由服务端负责
 
+# 获取脚本真实路径，处理软链接
+get_script_dir() {
+    # 获取脚本的绝对路径
+    local source="${BASH_SOURCE[0]}"
+    while [ -h "$source" ]; do
+        local dir="$(cd -P "$(dirname "$source")" && pwd)"
+        source="$(readlink "$source")"
+        [[ $source != /* ]] && source="$dir/$source"
+    done
+    local script_dir="$(cd -P "$(dirname "$source")" && pwd)"
+    echo "$script_dir"
+}
+
+SCRIPT_DIR=$(get_script_dir)
+
 # 默认配置文件路径
-CONFIG_FILE="./client-config.conf"
+CONFIG_FILE="$SCRIPT_DIR/client-config.conf"
 
 # 日志函数
 log() {
@@ -222,10 +237,10 @@ collect_all_data() {
     echo "$full_json"
 }
 
-# PID文件路径，用于后台守护进程管理
-PID_FILE="./disk-monitor.pid"
-# 日志文件路径
-LOG_FILE="./disk-monitor.log"
+# PID文件路径，用于后台守护进程管理（使用绝对路径）
+PID_FILE="$SCRIPT_DIR/disk-monitor.pid"
+# 日志文件路径（使用绝对路径）
+LOG_FILE="$SCRIPT_DIR/disk-monitor.log"
 
 # 显示帮助
 show_help() {
@@ -275,7 +290,14 @@ start_daemon() {
         COLLECT_INTERVAL=86400
     fi
 
-    (
+    # 进入脚本目录，确保相对路径工作正常
+    cd "$SCRIPT_DIR" || {
+        error "无法进入脚本目录 $SCRIPT_DIR"
+        exit 1
+    }
+
+    # 直接在后台执行循环，所有函数已经定义，使用exec实现真正守护进程
+    {
         while true; do
             log "=== 开始定时采集原始数据 ==="
             check_dependencies
@@ -287,7 +309,7 @@ start_daemon() {
             log "=== 采集完成，等待 $COLLECT_INTERVAL 秒后下次采集 ==="
             sleep "$COLLECT_INTERVAL"
         done
-    ) >> "$LOG_FILE" 2>&1 &
+    } >> "$LOG_FILE" 2>&1 < /dev/null &
 
     local pid=$!
     echo "$pid" > "$PID_FILE"
